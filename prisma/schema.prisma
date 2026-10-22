@@ -1,0 +1,174 @@
+// 个人知识库问答 — 数据模型
+//
+// 说明：这是骨架，里面有 4 处 TODO 需要你自己决定并填写（见文件内标注）。
+// 填完再跑 migrate，不要先跑再改。
+
+// Prisma 7 的变化：
+//   1. generator 用 "prisma-client"（旧版是 "prisma-client-js"），且必须指定 output
+//   2. 数据库连接地址不再写在这里，搬到根目录的 prisma7.config.ts
+generator client {
+  provider = "prisma-client"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================================
+// 一、NextAuth v5（Auth.js）标准四张表
+// 这四张是适配器要求的固定结构，不要自己发明，照抄官方模板即可。
+// 只加了一个 createdAt 方便后面排查问题。
+// ============================================================
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String?   @unique
+  emailVerified DateTime?
+  image         String?
+  createdAt     DateTime  @default(now())
+
+  accounts Account[]
+  sessions Session[]
+
+  // 业务关系
+  knowledgeBases KnowledgeBase[]
+  conversations  Conversation[]
+}
+
+model Account {
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([provider, providerAccountId])
+}
+
+model Session {
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@id([identifier, token])
+}
+
+// ============================================================
+// 二、业务表
+// ============================================================
+
+model KnowledgeBase {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  documents     Document[]
+  conversations Conversation[]
+}
+
+model Document {
+  id         String   @id @default(cuid())
+  title      String
+  sourceType String // pdf | md | txt
+  sizeBytes  Int?
+  status     String   @default("pending") // pending | processing | ready | failed
+  error      String?
+  createdAt  DateTime @default(now())
+
+  // TODO 1：这里要声明「属于哪个知识库」的关系字段。
+  //   需要你决定：级联删除策略用什么？
+  //   想清楚一个场景：用户删掉一个知识库，里面的文档该怎么办？
+  //   —— 留在数据库里变成孤儿数据？还是跟着一起删？
+  //
+  //   kbId String
+  //   kb   KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: ???)
+  kbId String
+  kb   KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: Cascade)
+
+  chunks Chunk[]
+}
+
+model Chunk {
+  id         String @id @default(cuid())
+  content    String
+  chunkIndex Int
+
+  // TODO 2：核心字段 —— 1024 维向量怎么在 Prisma 里声明？
+  //   Prisma 没有原生的 vector 类型（bge-m3 输出 1024 维）。
+  //   提示：Prisma 有个 Unsupported() 可以声明数据库原生类型。
+  //   注意两个坑：
+  //     a) 字段是可选还是必填？想想「文档先入库、向量后回填」这个顺序
+  //     b) Unsupported 类型的字段，Prisma Client 读写不了，
+  //        写入和检索都得靠 $queryRaw —— 这会影响 W3/W4 的代码写法
+  //
+  //   embedding ???
+  embedding Unsupported("vector(1024)")?
+
+
+  // TODO 3：同一篇文档里，chunkIndex 不应该重复。
+  //   这个约束怎么声明？
+  //
+  //   @@unique([???])
+  @@unique([documentId, chunkIndex])
+
+
+  documentId String
+  document   Document @relation(fields: [documentId], references: [id], onDelete: Cascade)
+}
+
+model Conversation {
+  id        String   @id @default(cuid())
+  title     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // TODO 4：会话同时挂在「知识库」和「用户」下面。
+  //   两个关系的级联删除策略一样吗？
+  //   想一个场景：知识库被删了，但用户账号还在 —— 这个会话该留还是该删？
+  //   反过来：用户销号了，会话该留还是该删？
+  //
+  //   kbId   String
+  //   kb     KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: ???)
+  //   userId String
+  //   user   User @relation(fields: [userId], references: [id], onDelete: ???)
+  kbId   String
+  kb     KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: Cascade)
+  userId String
+  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  messages Message[]
+}
+
+model Message {
+  id        String   @id @default(cuid())
+  role      String // user | assistant
+  content   String
+  citations Json? // 引用溯源：存 [{chunkId, documentId, quote, score}]
+  createdAt DateTime @default(now())
+
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+}

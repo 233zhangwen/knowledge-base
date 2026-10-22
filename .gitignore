@@ -20,6 +20,9 @@
 # production
 /build
 
+# prisma 生成的 client（每次 prisma generate 重建，不入库）
+/generated
+
 # misc
 .DS_Store
 *.pem
