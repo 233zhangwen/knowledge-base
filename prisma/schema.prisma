@@ -8,7 +8,7 @@
 //   2. 数据库连接地址不再写在这里，搬到根目录的 prisma7.config.ts
 generator client {
   provider = "prisma-client"
-  output   = "../generated/prisma"
+  output   = "../src/generated/prisma"
 }
 
 datasource db {

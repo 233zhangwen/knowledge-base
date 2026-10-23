@@ -21,7 +21,7 @@
 /build
 
 # prisma 生成的 client（每次 prisma generate 重建，不入库）
-/generated
+/src/generated
 
 # misc
 .DS_Store
@@ -45,3 +45,12 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# 本地调试日志
+.devserver.log
+
+# 本地调试时手搓的临时文件（curl 响应、进程列表等），一律不入库
+.devserver.log.check
+.nodeprocs.tmp
+_*.tmp
+_rt*.txt
