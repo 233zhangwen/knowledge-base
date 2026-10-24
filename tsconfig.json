@@ -11,6 +11,12 @@
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
     "isolatedModules": true,
+    /**
+     * 允许 `import x from '../src/lib/y.ts'` —— 只有 scripts/ 下的 .mts 用得上。
+     * 它们靠 `node --experimental-strip-types` 直接跑真 TS（不是复刻一份逻辑），
+     * 而 Node 的 ESM 要求相对路径必须带扩展名。本项只在 noEmit 下合法，我们正是 noEmit。
+     */
+    "allowImportingTsExtensions": true,
     "jsx": "react-jsx",
     "incremental": true,
     "plugins": [

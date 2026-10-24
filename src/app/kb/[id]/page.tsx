@@ -4,6 +4,7 @@ import { notFound } from 'next/navigation';
 import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
 
+import { ChatPanel } from './ChatPanel';
 import { DeleteDocumentButton } from './DeleteDocumentButton';
 import { ReindexButton } from './ReindexButton';
 import { UploadForm } from './UploadForm';
@@ -115,6 +116,13 @@ export default async function KnowledgeBaseDetailPage({
           </ul>
         )}
       </section>
+
+      {/*
+        问答放在最后：它是这个页面唯一"用得上前面所有成果"的功能。
+        readyCount === 0 时整个面板禁用 —— 与其让用户问一句拿到
+        "文档中没有相关内容"，不如直接说明为什么问不了。
+      */}
+      <ChatPanel kbId={kb.id} disabled={readyCount === 0} />
     </main>
   );
 }

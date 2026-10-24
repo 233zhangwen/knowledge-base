@@ -6,7 +6,9 @@
     "dev": "node scripts/dev.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "verify:stream": "node --experimental-transform-types scripts/verify-stream-protocol.mts",
+    "verify:rag": "node --experimental-transform-types scripts/verify-rag-e2e.mts"
   },
   "dependencies": {
     "@auth/prisma-adapter": "^2.11.3",
