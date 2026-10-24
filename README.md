@@ -60,7 +60,39 @@ MVP 阶段"少一个移动部件"比"省几块钱"重要。
 落地约定：
 - 服务端 Server Action 里上传，不走浏览器直传 —— 才能在同一个地方校验大小 / MIME / userId
 - key 命名 `${userId}/${documentId}-${原文件名}`，天然做用户隔离
-- 单文件 ≤ 10MB，仅 PDF / MD / TXT
+- 仅 PDF / MD / TXT
+- **单文件上限 4MB**（`src/lib/file-types.ts` 的 `MAX_FILE_SIZE` 是唯一来源）
+
+> ⚠️ **修正：这一条原来写的是 10MB，那是我拍的，经不起检验。**
+> Vercel Serverless 的**请求体硬上限是 4.5MB**，超过之后 Server Action 连被调用的机会都没有；
+> 而且 Next 的 Server Action 默认 `bodySizeLimit` 只有 1MB，必须在 `next.config.ts` 显式放开。
+> 现在是三层配合：应用层拦 4MB（`file-types.ts`）→ Next 放行到 5MB（留 1MB 给 multipart 开销）
+> → 平台上限 4.5MB（不可配置）。要突破只能改成浏览器直传签名 URL，那是 W7 的事。
+>
+> 这条记录的价值不在"数字从 10 变成 4"，而在演示一个动作：
+> **文档里每个拍出来的数字都必须能被验证、能被推翻。** 无法验证的数字等于没有依据。
+
+本地开发没有 Vercel Blob，所以 `src/lib/storage.ts` 做了一层 driver 抽象：
+有 `BLOB_READ_WRITE_TOKEN` 走 Blob，否则写仓库根的 `.storage/`（已 gitignore）。
+业务代码只认 `put / remove` 两个动作 —— 这也让"换云厂商"不再是散落各处的改动。
+
+**PDF 解析选 unpdf（pdfjs 的轻量封装），且刻意用了动态 import。**
+
+`unpdf@1.9.1` 零运行时依赖（自带 bundled pdfjs），不需要额外配 canvas / worker，
+能在 Vercel 的 Node runtime 里直接跑。但它的 pdfjs bundle 有 **1.5MB** ——
+所以 `src/lib/parse.ts` 里是 `await import('unpdf')` 而不是顶层 import：
+传一个 1KB 的 .md 不该把 1.5MB 的 pdfjs 也加载进内存。
+
+实测（`next build` 产物）确认这个隔离真的生效了，pdfjs 落在独立 chunk 里：
+
+```
+server/chunks/ssr/node_modules_unpdf_dist_pdfjs_mjs_*.js   1561 KB   ← 懒加载
+server/chunks/ssr/node_modules_unpdf_dist_index_mjs_*.js      2 KB   ← 入口
+```
+
+代价要提前记下：这 1.5MB 会计入 **Vercel Serverless Function 的体积上限**
+（免费层 250MB 解压后），RAG 主包变大后可能成为约束。真到那一步的处理方向是
+把解析拆成独立 Route Handler 或走浏览器端解析，都属于"等真卡住再动"。
 
 **关键设计：原件与问答解耦。** 解析出的文本、切片、向量全在 Postgres，
 问答时只读 Postgres、一次都不碰 Blob。所以 Blob 挂了 / 欠费 / 国内访问不通，

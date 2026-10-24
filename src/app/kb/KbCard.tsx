@@ -1,5 +1,7 @@
 'use client';
 
+import Link from 'next/link';
+
 import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { deleteKnowledgeBase, renameKnowledgeBase, type ActionState } from './actions';
@@ -37,8 +39,11 @@ export function KbCard({
       ) : (
         <>
           <div className="flex items-start justify-between gap-4">
-            <div>
-              <h2 className="font-medium">{name}</h2>
+            <div className="min-w-0">
+              {/* min-w-0 + truncate 是给长名字用的：否则它会把右边的按钮挤出卡片 */}
+              <Link href={`/kb/${id}`} className="font-medium hover:underline">
+                {name}
+              </Link>
               {description ? (
                 <p className="mt-1 text-sm text-zinc-500">{description}</p>
               ) : null}

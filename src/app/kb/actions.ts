@@ -4,14 +4,12 @@ import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
+import { removeQuietly } from '@/lib/storage';
 
-/**
- * 表单提交后回给客户端的状态。
- * 约定：有 error 就显示错误，没有就当成功。
- * 不用 throw 来传错误 —— Server Action 里 throw 在生产环境只给客户端一个
- * 模糊的 "An error occurred"，用户看到的是一句废话。业务校验失败要自己返回可读信息。
- */
-export type ActionState = { error?: string };
+import type { ActionState } from '@/lib/action-state';
+
+/** 重导出：同目录组件继续从 './actions' 引就行，不用关心它实际放在哪。 */
+export type { ActionState };
 
 const MAX_NAME_LENGTH = 50;
 const MAX_DESCRIPTION_LENGTH = 200;
@@ -139,10 +137,16 @@ export async function deleteKnowledgeBase(
    * 数据库层面：Document 的 onDelete 是 Cascade，
    * 所以这个知识库下的 Document → Chunk 会跟着一起删掉，不会留孤儿数据。
    *
-   * ⚠️ TODO(W2 后半段)：等上传功能接上 Vercel Blob 之后，这里还要显式删掉
-   * 对象存储里的原件 —— **数据库级联删不到 Blob**。
-   * 不做的话，数据库干净了、存储里全是没人能访问到的垃圾文件，还会一直计费。
+   * ⚠️ 但 **级联删不到对象存储**。所以先把即将被删的文档的 storageKey 捞出来，
+   * 等数据库删成功之后再逐个清掉 —— 顺序不能反：
+   * 先删文件、后删库的话，万一删库失败，文件已经没了，用户的数据彻底找不回来；
+   * 反过来最多留个没人能访问的文件（还会被 removeQuietly 记进日志）。
    */
+  const documents = await prisma.document.findMany({
+    where: { kb: { id, userId } },
+    select: { storageKey: true },
+  });
+
   const { count } = await prisma.knowledgeBase.deleteMany({
     where: { id, userId },
   });
@@ -159,6 +163,13 @@ export async function deleteKnowledgeBase(
    */
   if (count === 0) {
     return { error: '知识库不存在或无权删除' };
+  }
+
+  // 数据库已经删干净了，再清理原件（失败只记日志，不影响用户看到的结果）
+  for (const doc of documents) {
+    if (doc.storageKey) {
+      await removeQuietly(doc.storageKey);
+    }
   }
 
   // 只有真的删掉了才刷新。count = 0 说明数据没变化，没必要触发一次重取。

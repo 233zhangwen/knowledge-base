@@ -1,7 +1,9 @@
 // 个人知识库问答 — 数据模型
 //
-// 说明：这是骨架，里面有 4 处 TODO 需要你自己决定并填写（见文件内标注）。
-// 填完再跑 migrate，不要先跑再改。
+// 说明：最初这里留了 4 处 TODO 作为练习（关系字段 / 向量字段 / 唯一约束 / 会话归属），
+// 现已全部填写完毕并已 migrate 到远端 Neon。
+// 保留 TODO 2 / 3 附近的思路注释，是因为它们记录的是"为什么这么声明"，删掉会丢信息。
+// 之后每次改 schema 都要跑 migrate —— 不要手改远端表结构，否则本地迁移历史会对不上。
 
 // Prisma 7 的变化：
 //   1. generator 用 "prisma-client"（旧版是 "prisma-client-js"），且必须指定 output
@@ -98,15 +100,25 @@ model Document {
   error      String?
   createdAt  DateTime @default(now())
 
-  // TODO 1：这里要声明「属于哪个知识库」的关系字段。
-  //   需要你决定：级联删除策略用什么？
-  //   想清楚一个场景：用户删掉一个知识库，里面的文档该怎么办？
-  //   —— 留在数据库里变成孤儿数据？还是跟着一起删？
-  //
-  //   kbId String
-  //   kb   KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: ???)
   kbId String
   kb   KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: Cascade)
+
+  /**
+   * 原件在对象存储里的位置（key）。
+   *
+   * ⚠️ 问答链路**永远不读它** —— 检索只读 Postgres 里的 Chunk。
+   * 它只在两件事上用到：重新切片（W6 换了策略要重跑）、用户下载原件。
+   * 这个解耦是故意的：对象存储挂了 / 欠费了 / 国内访问不通，问答照跑。
+   */
+  storageKey String?
+
+  /**
+   * 解析出来的纯文本。
+   *
+   * 为什么不留给 W3 切片时再去对象存储现拉？因为那样切片的可用性就
+   * 绑死在对象存储上了。存进 Postgres 之后，切片只需要 DB —— 和上面同一条思路。
+   */
+  content String?
 
   chunks Chunk[]
 }

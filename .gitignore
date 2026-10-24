@@ -22,6 +22,8 @@
 
 # prisma 生成的 client（每次 prisma generate 重建，不入库）
 /src/generated
+# 上面这行的临时同产物也别进（我为了绕开沙箱删除限制，曾用目录名 prisma_tmp）
+/src/generated/prisma_tmp
 
 # misc
 .DS_Store
@@ -49,8 +51,16 @@ next-env.d.ts
 # 本地调试日志
 .devserver.log
 
-# 本地调试时手搓的临时文件（curl 响应、进程列表等），一律不入库
+# 本地开发环境模拟对象存储时，原件落盘的位置（生产用的是 Vercel Blob，不需要这目录）
+/.storage/
+
+# 本地调试时手搓的临时文件（curl 响应、进程列表、一次性探针脚本、测试 PDF 等）
+# 约定：下划线开头 = 一次性的、用完就丢，一律不入库
 .devserver.log.check
 .nodeprocs.tmp
 _*.tmp
 _rt*.txt
+/_*.pdf
+/src/lib/_*
+# 打包验证用的临时输出目录（默认 .next 才是正式产物，已在上方忽略）
+/.build-probe/
