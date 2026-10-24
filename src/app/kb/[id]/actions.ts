@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { buildStorageKey, contentTypeFor, detectSourceType, MAX_FILE_SIZE } from '@/lib/file-types';
+import { indexDocument } from '@/lib/index-document';
 import { extractText } from '@/lib/parse';
 import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
@@ -87,12 +88,23 @@ export async function uploadDocument(
 
     // ② 解析成纯文本
     const content = await extractText(bytes, sourceType);
-
-    // ③ 标记 ready
     await prisma.document.update({
       where: { id: document.id },
-      data: { content, status: 'ready' },
+      data: { content, status: 'processing' },
     });
+
+    /**
+     * ③ 切片 + 嵌入（W3）。
+     *
+     * 这里**故意不写 try/catch**：indexDocument 失败会抛错，落到下面的 catch 里
+     * 统一变成 failed + error。如果在这里单独 catch 一次，很容易写出
+     * "吞掉异常、状态停在 processing"的静默失败 —— 用户看到的就是永远转圈。
+     *
+     * 状态流转：pending（已建记录）→ processing（解析完，正在索引）
+     *                              → ready（索引完成，可被检索）
+     *                              ↘ failed（任一步失败，error 字段写明原因）
+     */
+    await indexDocument(document.id);
   } catch (error) {
     await prisma.document.update({
       where: { id: document.id },
@@ -102,6 +114,60 @@ export async function uploadDocument(
   }
 
   revalidatePath(`/kb/${kb.id}`);
+
+  return {};
+}
+
+/**
+ * 重建索引：对**已解析成功**（content 非空）的文档重跑 切片 → 嵌入 → 写库。
+ *
+ * 两个使用场景：
+ *   ① 历史遗留：W3 接线之前上传的文档 status=ready 但 chunk 为 0，
+ *      W4 的检索会"选中它却搜不出内容"—— 比报错更隐蔽，必须补索引。
+ *   ② 环境类失败重试：embedding 服务配错/超时导致 failed 的文档，
+ *      修好配置后点这个按钮即可，不用删了重传。
+ *
+ * 注意它**不重新解析**：content 为 null（解析层就失败）的文档在这里会被拒，
+ * 提示重新上传 —— 解析失败的文档本来就没有文本可索引。
+ */
+export async function reindexDocument(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const userId = await requireUserId();
+
+  const id = String(formData.get('id') ?? '');
+  if (!id) {
+    return { error: '缺少文档 id' };
+  }
+
+  const document = await prisma.document.findFirst({
+    where: { id, kb: { userId } },
+    select: { id: true, kbId: true, content: true },
+  });
+  if (!document) {
+    return { error: '文档不存在或无权操作' };
+  }
+  if (!document.content) {
+    return { error: '该文档没有解析出的文本，无法重建索引（请删除后重新上传）' };
+  }
+
+  await prisma.document.update({
+    where: { id: document.id },
+    data: { status: 'processing', error: null },
+  });
+
+  try {
+    await indexDocument(document.id);
+  } catch (error) {
+    await prisma.document.update({
+      where: { id: document.id },
+      data: { status: 'failed', error: readableError(error) },
+    });
+    return { error: `重建索引失败：${readableError(error)}` };
+  }
+
+  revalidatePath(`/kb/${document.kbId}`);
 
   return {};
 }

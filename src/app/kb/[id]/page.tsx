@@ -5,6 +5,7 @@ import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
 
 import { DeleteDocumentButton } from './DeleteDocumentButton';
+import { ReindexButton } from './ReindexButton';
 import { UploadForm } from './UploadForm';
 
 /**
@@ -105,7 +106,10 @@ export default async function KnowledgeBaseDetailPage({
                   ) : null}
                 </div>
 
-                <DeleteDocumentButton id={doc.id} />
+                <div className="flex shrink-0 items-center gap-2">
+                  <ReindexButton id={doc.id} />
+                  <DeleteDocumentButton id={doc.id} />
+                </div>
               </li>
             ))}
           </ul>
@@ -124,7 +128,11 @@ const STATUS_STYLE: Record<string, string> = {
 
 const STATUS_LABEL: Record<string, string> = {
   pending: '处理中',
-  processing: '解析中',
+  /**
+   * W3 之后 processing 的含义变了：不再是"解析中"，而是"解析已完成、正在切片和向量化"。
+   * 状态名字没变但语义变了 —— 这种地方不改文案，用户（和三个月后的自己）就会误判进度。
+   */
+  processing: '生成索引中',
   ready: '已就绪',
   failed: '失败',
 };
