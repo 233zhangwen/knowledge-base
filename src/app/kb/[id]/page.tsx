@@ -1,24 +1,33 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
+import type { Citation } from '@/lib/chat-protocol';
+import { ConversationNotFound, loadConversationMessages, listConversations } from '@/lib/history';
 import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
 
-import { ChatPanel } from './ChatPanel';
+import { ChatPanel, type UiMessage } from './ChatPanel';
+import { ConversationSidebar, type SidebarItem } from './ConversationSidebar';
 import { DeleteDocumentButton } from './DeleteDocumentButton';
 import { ReindexButton } from './ReindexButton';
 import { UploadForm } from './UploadForm';
 
 /**
- * 注意：Next 15/16 里 page 的 params 是 **Promise**，必须 await。
+ * 注意：Next 15/16 里 page 的 params 和 searchParams 都是 **Promise**，必须 await。
  * 直接解构会拿到一个 Promise 对象而不是 { id } —— 查库就查了个寂寞。
+ *
+ * searchParams.c 是"当前打开的会话 id"：把它放进 URL 而不是本地 state，
+ * 刷新、前进后退、重新打开链接才全都正确（spec A1 靠的就是它）。
  */
 export default async function KnowledgeBaseDetailPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ c?: string }>;
 }) {
   const { id } = await params;
+  const { c } = await searchParams;
   const userId = await requireUserId();
 
   const kb = await prisma.knowledgeBase.findFirst({
@@ -55,6 +64,51 @@ export default async function KnowledgeBaseDetailPage({
   }
 
   const readyCount = kb.documents.filter((d) => d.status === 'ready').length;
+
+  /**
+   * 会话侧栏：只列最近 20 个（决策③：会话分组代替分页，spec A6）。
+   * 会话本身就是天然的数据边界 —— 一次会话很少超过 30 条消息，
+   * 用它做分组就已经解决了"数据量无限增长"，不需要再套一层滚动分页。
+   */
+  const conversations = await listConversations(userId, kb.id);
+  const sidebarItems: SidebarItem[] = conversations.map((c) => ({
+    id: c.id,
+    title: c.title,
+    messageCount: c._count.messages,
+    updatedAtText: SHORT_DATE_FORMATTER.format(c.updatedAt),
+  }));
+
+  /**
+   * 选中的会话：从 URL 的 ?c= 来。
+   *
+   * 即便它不在上面那 20 个里也照样能打开 —— 侧栏只是导航，
+   * 不能反过来限制"哪些会话可访问"。这也是为什么这里要重新查一次而不是从列表里找。
+   * `loadConversationMessages` 内部已经用 userId 过滤过（spec C1），这里再对一次 kbId（spec C2）。
+   */
+  let activeConversationId: string | null = null;
+  let initialMessages: UiMessage[] = [];
+  if (c) {
+    try {
+      const { conversation, messages } = await loadConversationMessages(userId, c);
+      if (conversation.kbId === kb.id) {
+        activeConversationId = conversation.id;
+        initialMessages = messages.map((m) => ({
+          id: m.id,
+          role: m.role === 'assistant' ? 'assistant' : 'user',
+          content: m.content,
+          /**
+           * 数据库里存的是 Json，这里断言成 Citation[]。
+           * 落库时就确保了形状 —— 它是那份快照本身（spec A3），不是查出来的当前 chunk。
+           */
+          citations: (m.citations as unknown as Citation[] | null) ?? null,
+          finishReason: m.finishReason === 'stopped' ? 'stopped' : 'complete',
+        }));
+      }
+    } catch (error) {
+      if (!(error instanceof ConversationNotFound)) throw error;
+      // 别人的会话 / 不存在的会话：当成没选中即可，不报错也不泄露
+    }
+  }
 
   return (
     <main className="flex min-h-screen flex-col gap-6 p-8">
@@ -121,8 +175,24 @@ export default async function KnowledgeBaseDetailPage({
         问答放在最后：它是这个页面唯一"用得上前面所有成果"的功能。
         readyCount === 0 时整个面板禁用 —— 与其让用户问一句拿到
         "文档中没有相关内容"，不如直接说明为什么问不了。
+
+        key={activeConversationId}：切换会话时靠卸载重挂载清空本地状态
+        （useState 没有 reset API；这一步顺带保证了 E2「新旧会话互不干扰」）。
       */}
-      <ChatPanel kbId={kb.id} disabled={readyCount === 0} />
+      <section className="flex items-start gap-6">
+        <ConversationSidebar
+          kbId={kb.id}
+          conversations={sidebarItems}
+          activeId={activeConversationId}
+        />
+        <ChatPanel
+          key={activeConversationId ?? 'new'}
+          kbId={kb.id}
+          conversationId={activeConversationId}
+          initialMessages={initialMessages}
+          disabled={readyCount === 0}
+        />
+      </section>
     </main>
   );
 }
@@ -164,6 +234,11 @@ function StatusChip({ status }: { status: string }) {
 const DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   dateStyle: 'medium',
   timeStyle: 'short',
+});
+
+/** 侧栏空间小，只显示日期；同样必须在服务端格式化，避免 hydration 不一致 */
+const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
+  dateStyle: 'short',
 });
 
 function formatBytes(bytes: number): string {

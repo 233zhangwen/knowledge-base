@@ -175,12 +175,37 @@ model Conversation {
 }
 
 model Message {
-  id        String   @id @default(cuid())
-  role      String // user | assistant
-  content   String
-  citations Json? // 引用溯源：存 [{chunkId, documentId, quote, score}]
+  id      String @id @default(cuid())
+  role    String // user | assistant
+  content String
+
+  /**
+   * 引用溯源：**存快照，不存外键**。
+   *
+   * 存的是这次回答当时真正喂给 Prompt 的那几条（含片段全文），不是 chunkId。
+   * 理由和 W4 的 B2 是同一条：外键查到的是"当前"库里的 chunk，
+   * 而这期间文档可能已被删、已被重建索引、切片已重排。
+   * 只存外键的话，同一个 bug 只是被推迟到三个月后发作（spec A3）。
+   */
+  citations Json? // 快照：[{chunkIndex, documentId, documentTitle, similarity, content}]
+
+  /**
+   * 这条 assistant 消息是怎么结束的（W5 新增，spec D4）。
+   *
+   *   complete = 正常生成完
+   *   stopped  = 用户按了「停止生成」，内容可能只有半截
+   *
+   * ⚠️ 注意这里**故意没有 failed**：生成失败时 assistant 消息压根不落库（spec D1），
+   * 历史里留下的是一条没有回答的 user 消息，由 UI 侧推断出"未完成"（spec D5）。
+   * 少一个状态比多一个状态好 —— 存下来就要维护它的语义，而它带来不了任何新信息。
+   */
+  finishReason String @default("complete") // complete | stopped
+
   createdAt DateTime @default(now())
 
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  // 每次打开会话都要「按会话取最近若干条」，这个复合索引让 take + orderBy 走索引
+  @@index([conversationId, createdAt])
 }

@@ -43,13 +43,21 @@ function readConfig() {
 }
 
 /**
- * 把「问题 + 检索到的片段」拼成对话消息。
+ * 把「历史对话 + 问题 + 检索到的片段」拼成对话消息。
  *
  * System prompt 的规则 3 是 spec A3 / B4 的实现载体：
  * 没有"不许用外部知识"这条硬约束，模型会在文档答案和自己的常识冲突时
  * 不自觉地"纠正"文档 —— RAG 最经典、最难被发现的缺陷。
+ *
+ * @param history 最近几轮的历史消息，**必定在 system 之后、当前问题之前**。
+ *                顺序反了（历史放在问题后面）模型就只能"看着答案猜问题"，
+ *                代词追问全部失效 —— 那就是 spec B1 想挡的东西。
  */
-export function buildRagMessages(question: string, chunks: RetrievedChunk[]): ChatMessage[] {
+export function buildRagMessages(
+  question: string,
+  chunks: RetrievedChunk[],
+  history: ChatMessage[] = [],
+): ChatMessage[] {
   /**
    * 编号 [1]..[N] 与 route.ts 下发的 citations 数组**同序** ——
    * 这是 spec C1（引用一致性）成立的前提：前端展示的第 i 条，
@@ -76,8 +84,15 @@ export function buildRagMessages(question: string, chunks: RetrievedChunk[]): Ch
         chunks.length
           ? `4. 只允许引用实际提供的编号（[1] 到 [${chunks.length}]），禁止编造引用。`
           : '4. 本次没有提供任何参考资料，直接回答"文档中没有相关内容"。',
-      ].join('\n'),
+        history.length
+          ? '5. 用户会就上文继续追问。追问里若出现代词（它、那、第二项、后者的一半），一律先从上文确定指代对象，再作答。'
+          : '',
+      ]
+        .filter(Boolean)
+        .join('\n'),
     },
+    // 历史夹在 system 与当前问题之间（见注释里的顺序说明）
+    ...history,
     {
       role: 'user',
       content: `参考资料：\n\n${context}\n\n问题：${question}`,
@@ -91,14 +106,32 @@ export function buildRagMessages(question: string, chunks: RetrievedChunk[]): Ch
  * 用 async generator 而不是直接返回 ReadableStream —— 调用方（Route Handler）
  * 拿到的是"一段一段的字符串"，想怎么包装都行，不用关心 SSE 解析。
  */
-export async function* streamChat(messages: ChatMessage[]): AsyncGenerator<string> {
+export async function* streamChat(
+  messages: ChatMessage[],
+  options: { signal?: AbortSignal } = {},
+): AsyncGenerator<string> {
   const { apiKey, model, endpoint } = readConfig();
+
+  /**
+   * 观测点（spec B2 / B3）：上下文到底带了几条。
+   * 结构固定是 system 1 + 历史 N + 当前 user 1，所以历史 = 总数 - 2。
+   * 这条日志要能一眼看出"历史是不是被截在上限":第 5 轮之后历史应恒等于 6。
+   */
+  console.log(
+    `[llm] 上下文 ${messages.length} 条（system 1 + 历史 ${Math.max(messages.length - 2, 0)} + 当前 user 1）`,
+  );
 
   let res: Response;
   try {
     res = await fetch(endpoint, {
       method: 'POST',
       headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      /**
+       * signal：用户按「停止生成」→ 前端 abort → 这个 signal 触发 → 上游请求立刻断。
+       * 不给它的话，上游会把整条回答生成完，而我们早已不再读了 ——
+       * 白付 token，是最典型的"用户以为停了，后台还在烧钱"。
+       */
+      signal: options.signal,
       body: JSON.stringify({
         model,
         stream: true,
@@ -110,6 +143,9 @@ export async function* streamChat(messages: ChatMessage[]): AsyncGenerator<strin
       }),
     });
   } catch (error) {
+    // 用户主动停止：原样抛出，保留 name === 'AbortError'，
+    // 让调用方能把它和真正的失败区分开 —— 包装成 LlmError 就把这个信号吞了
+    if (error instanceof Error && error.name === 'AbortError') throw error;
     throw new LlmError(
       `请求 LLM 服务失败（${error instanceof Error ? error.message : String(error)}）`,
     );

@@ -22,7 +22,7 @@ import { embedTexts } from '../src/lib/embedding.ts';
 import { buildRagMessages, streamChat } from '../src/lib/llm.ts';
 import {
   createCursor,
-  encodeCitationsLine,
+  encodeHeadLine,
   feed,
   type Citation,
 } from '../src/lib/chat-protocol.ts';
@@ -118,7 +118,7 @@ async function main() {
   const t0 = Date.now();
   let firstTokenAt = 0;
   let text = '';
-  let stream = encodeCitationsLine(citations); // ③ 顺手用真协议包一遍流
+  let stream = encodeHeadLine({ citations, conversationId: null }); // ③ 顺手用真协议包一遍流
   for await (const delta of streamChat(buildRagMessages(question, chunks))) {
     if (!firstTokenAt) firstTokenAt = Date.now() - t0;
     text += delta;

@@ -12,9 +12,14 @@
  *   只有纯函数才能被脚本反复喂各种切法（scripts/verify-stream-protocol.mts）。
  *
  * 流格式（一行一条，正文可含任意换行）：
- *   第一行： {"citations":[...]}\n
+ *   第一行： {"citations":[...],"conversationId":"..."}\n
  *   之后：   纯文本增量（原样拼进答案）
  *   出错时： 正文里出现 \u0000，其后所有内容都是错误信息
+ *
+ * 为什么 conversationId 要挤在第一行里（W5 新增，spec A5）：
+ *   会话是「第一次提问时」才创建的（spec D2：进页面不创建），而响应已经是流了 ——
+ *   再开一个接口去问 id 就得多一次往返，且存在"答案还在生成、前端却拿着老会话"的窗口。
+ *   塞在第一行等于搭便车：答案的第一个字到之前，id 一定已经到了。
  */
 export type Citation = {
   chunkIndex: number;
@@ -24,12 +29,18 @@ export type Citation = {
   content: string;
 };
 
+/** 流的第一行：本次检索到的引用 + 这次会话的 id。 */
+export type StreamHead = {
+  citations: Citation[];
+  conversationId: string | null;
+};
+
 /** 错误哨兵。流式响应头早已发出 200，中途失败改不了状态码，只能走内协议。 */
 export const NUL = '\u0000';
 
-/** 服务端：把 citations 编码成第一行。 */
-export function encodeCitationsLine(citations: Citation[]): string {
-  return `${JSON.stringify({ citations })}\n`;
+/** 服务端：把首部信息编码成第一行。 */
+export function encodeHeadLine(head: StreamHead): string {
+  return `${JSON.stringify(head)}\n`;
 }
 
 /** 服务端：生成中途失败时追加的哨兵行。 */
@@ -50,6 +61,8 @@ export type StreamCursor = {
   /** 是否已经遇到哨兵（之后的内容都算错误信息） */
   errorMode: boolean;
   citations: Citation[];
+  /** 本次会话的 id（流第一行带来；null = 服务端没给，前端也就没法续聊） */
+  conversationId: string | null;
   answer: string;
   error: string;
 };
@@ -60,6 +73,7 @@ export function createCursor(): StreamCursor {
     headerBuf: '',
     errorMode: false,
     citations: [],
+    conversationId: null,
     answer: '',
     error: '',
   };
@@ -90,11 +104,13 @@ export function feed(cursor: StreamCursor, text: string): boolean {
     cursor.headerBuf = '';
     cursor.readingHeader = false;
     try {
-      const parsed = JSON.parse(head) as { citations?: Citation[] };
+      const parsed = JSON.parse(head) as Partial<StreamHead>;
       cursor.citations = parsed.citations ?? [];
+      cursor.conversationId = parsed.conversationId ?? null;
     } catch {
       // 不该发生：服务端第一行一定是 JSON。真发生了就当没有引用，答案照常显示。
       cursor.citations = [];
+      cursor.conversationId = null;
     }
     justParsedHeader = true;
   }

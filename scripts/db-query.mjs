@@ -99,7 +99,33 @@ async function q(label, sql, params = []) {
 
 await client.connect();
 
-const sql = process.argv.slice(2).join(' ').trim();
+/**
+ * SQL 从哪来：argv 优先，其次 stdin。
+ *
+ * 为什么要支持 stdin —— PowerShell 把带双引号的参数传给 **原生命令**（node.exe）时，
+ * 引号会被吃掉一层：`node db-query.mjs 'select ... from "Conversation";'`
+ * 到达 Node 时已经变成 `from Conversation`，引号没了 → Postgres 报
+ * `relation "conversation" does not exist`（大小写敏感，而表是用引号建的混合大小写）。
+ * 走 stdin 就完全没有这层 re-parse，所以 PowerShell 里推荐这样写：
+ *
+ *   @'
+ *   select count(*)::int from "Conversation";
+ *   '@ | node scripts/db-query.mjs --stdin
+ *
+ * 单条短 SQL 也可以用 -s 参数（同样走 stdin 管道）：
+ *   'select count(*)::int from "Conversation";' | node scripts/db-query.mjs --stdin
+ */
+async function readStdin() {
+  const chunks = [];
+  for await (const c of process.stdin) chunks.push(c);
+  return chunks.join('').trim();
+}
+
+const argv = process.argv.slice(2);
+const useStdin = argv.includes('--stdin');
+const argvSql = argv.filter((a) => a !== '--stdin').join(' ').trim();
+// 只有明确传了 --stdin 才去读：否则无参数跑预设时会在 await stdin 上永远卡住
+const sql = argvSql || (useStdin ? await readStdin() : '');
 
 if (sql) {
   // ---------- 自定义 SQL ----------
