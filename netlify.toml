@@ -1,0 +1,10 @@
+# Netlify 构建配置。
+# 为什么 publish 必须显式写 ".next"：不写时默认 publish=仓库根目录，
+# 与 base directory 相同，@netlify/plugin-nextjs 的 onBuild 前置检查
+# 会直接报 "Your publish directory cannot be the same as the base
+# directory of your site"（首次部署实测，2026-10-27）。
+# command 必须是 npm run build：它包含 prisma generate（generated/prisma
+# 在 .gitignore 里，Vercel/Netlify 装完依赖不会有 client，缺这步必挂）。
+[build]
+  command = "npm run build"
+  publish = ".next"
