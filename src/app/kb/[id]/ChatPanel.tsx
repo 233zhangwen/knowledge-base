@@ -17,7 +17,7 @@
  * 不是偷懒：useActionState / useState 都没有 reset API，切换会话时
  * 最可靠的"重置一切"就是卸载重来（这个套路 RenameForm 里用过一次）。
  */
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 import {
   createCursor,
@@ -61,6 +61,25 @@ export function ChatPanel({
     conversationId,
   );
   const [abort, setAbort] = useState<(() => void) | null>(null);
+
+  /**
+   * 滚动跟随（2026-10-27 改版）：
+   * 消息列表是内部滚动的固定高度区域，流式生成时必须自动滚到底，
+   * 否则用户看到的是"卡住的头几句"而最新内容在看不见的地方长。
+   *
+   * stickToBottom：用户往上翻了就不许再拽 —— 强制跟随是反人类的。
+   * 判据是"是否接近底部"（80px 容差），滚回底部附近后跟随自动恢复。
+   */
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && stickToBottom.current) {
+      el.scrollTop = el.scrollHeight;
+    }
+    // messages 每次流式更新都是新数组，引用变化即可覆盖"内容变长"和"条数变多"
+  }, [messages]);
 
   async function ask() {
     const q = question.trim();
@@ -188,7 +207,19 @@ export function ChatPanel({
           之前整个消息列表被藏进这个分支，结果删掉文档后历史会话全部"打不开"——
           页面 200、侧栏正常，消息区却只剩一句占位符（spec A1/A3 直接被违反：
           刷新不丢变成了"有文档才不丢"）。看历史和发提问是两个独立能力。 */}
-      <div className="flex flex-col gap-3">
+      {/*
+        固定最大高度 + 内部滚动：对话长了之后页面不再被无限拉长，
+        输入框永远在可视范围内（之前聊到 20 轮要滚过三屏才能打字）。
+        pr-1 给滚动条留位，避免压住气泡右缘。
+      */}
+      <div
+        ref={scrollRef}
+        onScroll={(e) => {
+          const el = e.currentTarget;
+          stickToBottom.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+        }}
+        className="flex max-h-[65vh] flex-col gap-4 overflow-y-auto pr-1"
+      >
         {messages.map((m, i) => (
           <MessageView
             key={m.id}
@@ -219,9 +250,13 @@ export function ChatPanel({
             onChange={(e) => setQuestion(e.target.value)}
             maxLength={MAX_QUESTION_LENGTH}
             rows={3}
-            placeholder="基于这个知识库的内容提问……（Ctrl + Enter 发送）"
+            placeholder="基于这个知识库的内容提问……（Enter 发送，Shift+Enter 换行）"
             onKeyDown={(e) => {
-              if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
+              if (e.key !== 'Enter' || e.shiftKey) return;
+              // 桌面 Ctrl/Cmd+Enter 发送（Enter 留给换行）；
+              // 触屏设备没有 Ctrl 键，Enter 直发。
+              const isTouch = window.matchMedia?.('(pointer: coarse)').matches ?? false;
+              if (e.ctrlKey || e.metaKey || isTouch) {
                 e.preventDefault();
                 void ask();
               }
@@ -277,42 +312,71 @@ function MessageView({
   const isUser = message.role === 'user';
 
   return (
-    <div className={isUser ? 'self-end max-w-[85%]' : 'max-w-[100%]'}>
-      <p className="mb-1 text-xs text-zinc-400">{isUser ? '你' : '回答'}</p>
-      <div
-        className={`rounded-lg border p-3 ${
-          isUser ? 'bg-zinc-900 text-white' : 'bg-white'
-        }`}
-      >
-        {/* pre-wrap：模型输出里的换行要原样呈现，否则段落糊成一团 */}
-        <p className="whitespace-pre-wrap text-sm leading-7">
-          {message.content}
-          {/* 光标只在正在生成的那条末尾；历史消息一律不多一个字符 ——
-              打字机重放属于 Out of Scope，历史就是静态文本 */}
-          {streaming ? <span className="text-zinc-400">▌</span> : null}
-        </p>
-        {message.finishReason === 'stopped' ? (
-          <p className="mt-2 text-xs text-zinc-400">已停止生成（内容可能不完整）</p>
+    /**
+     * 2026-10-27 改版：去掉"你/回答"文字标签，改左右分布 ——
+     * 用户消息右对齐深色气泡、回答左对齐浅色，这是聊天界面的通用心智，
+     * 不需要标签解释谁是谁。窄气泡（70%/88%）留白比全宽盒子舒服得多。
+     */
+    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+      <div className={isUser ? 'max-w-[75%]' : 'max-w-[88%]'}>
+        <div
+          className={
+            isUser
+              ? 'rounded-2xl rounded-br-sm bg-zinc-900 px-4 py-2.5 text-white'
+              : 'rounded-2xl rounded-bl-sm bg-zinc-50 px-4 py-3'
+          }
+        >
+          {/* pre-wrap：模型输出里的换行要原样呈现，否则段落糊成一团 */}
+          <p className="whitespace-pre-wrap text-sm leading-7">
+            {message.content}
+            {/* 光标只在正在生成的那条末尾；历史消息一律不多一个字符 ——
+                打字机重放属于 Out of Scope，历史就是静态文本 */}
+            {streaming ? <span className="text-zinc-400">▌</span> : null}
+          </p>
+          {message.finishReason === 'stopped' ? (
+            <p className={`mt-2 text-xs ${isUser ? 'text-zinc-400' : 'text-zinc-500'}`}>
+              已停止生成（内容可能不完整）
+            </p>
+          ) : null}
+        </div>
+
+        {message.citations && message.citations.length > 0 ? (
+          <Citations citations={message.citations} />
+        ) : null}
+
+        {orphan ? (
+          <p className="mt-2 text-xs text-amber-600">
+            这次提问没有拿到回答（生成失败或被中断）。可以直接重新提问。
+          </p>
         ) : null}
       </div>
-
-      {message.citations && message.citations.length > 0 ? (
-        <div className="mt-2 rounded-lg border p-3">
-          <p className="mb-2 text-xs text-zinc-400">引用（{message.citations.length} 个片段）</p>
-          <ul className="flex flex-col gap-2">
-            {message.citations.map((c, i) => (
-              <CitationItem key={`${c.documentId}-${c.chunkIndex}`} citation={c} index={i} />
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {orphan ? (
-        <p className="mt-2 text-xs text-amber-600">
-          这次提问没有拿到回答（生成失败或被中断）。可以直接重新提问。
-        </p>
-      ) : null}
     </div>
+  );
+}
+
+/**
+ * 引用区（2026-10-27 改版）：整体包成 details **默认收起**。
+ *
+ * 之前常驻展开的两个问题：① 答案下面永远挂着一大块边框盒，对话流被打断；
+ * ② summary 行里有"相似度 0.983"—— 那是**评测指标**，对使用者毫无意义，
+ * 还占掉整行宽度。相似度数据仍存在快照里，只是不再显示。
+ *
+ * 摘要行只回答一个问题：引用了几个片段、来自哪些文档。
+ */
+function Citations({ citations }: { citations: Citation[] }) {
+  const docTitles = [...new Set(citations.map((c) => c.documentTitle))];
+
+  return (
+    <details className="mt-2 rounded-lg border border-dashed border-zinc-300">
+      <summary className="cursor-pointer select-none px-3 py-2 text-xs text-zinc-500 hover:text-zinc-800">
+        引用 {citations.length} 段（来自 {docTitles.join('、')}）
+      </summary>
+      <ul className="flex flex-col gap-2 px-3 pb-3">
+        {citations.map((c, i) => (
+          <CitationItem key={`${c.documentId}-${c.chunkIndex}`} citation={c} index={i} />
+        ))}
+      </ul>
+    </details>
   );
 }
 
@@ -337,7 +401,6 @@ function CitationItem({ citation, index }: { citation: Citation; index: number }
         <summary className="cursor-pointer text-zinc-600 hover:text-zinc-900">
           <span className="font-medium text-zinc-900">[{index + 1}]</span> {citation.documentTitle} ·
           第 {citation.chunkIndex + 1} 段
-          <span className="ml-2 text-zinc-400">相似度 {citation.similarity.toFixed(3)}</span>
           <span className="ml-2 text-zinc-400">{preview}……</span>
         </summary>
         <p className="mt-2 whitespace-pre-wrap rounded bg-zinc-50 p-3 leading-6 text-zinc-700">

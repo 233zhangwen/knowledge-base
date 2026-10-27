@@ -111,7 +111,12 @@ export default async function KnowledgeBaseDetailPage({
   }
 
   return (
-    <main className="flex min-h-screen flex-col gap-6 p-8">
+    /**
+     * p-4 sm:p-8：手机上 32px 的页边距会吃掉三分之一的可用宽度 ——
+     * 聊天区"挤"的一半原因在这。max-w-5xl：超宽屏上文本行太长不好读，
+     * 收住上限居中。
+     */
+    <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex flex-col gap-2 border-b pb-4">
         <Link href="/kb" className="text-sm text-zinc-500 hover:text-zinc-900">
           ← 返回知识库列表
@@ -178,8 +183,12 @@ export default async function KnowledgeBaseDetailPage({
 
         key={activeConversationId}：切换会话时靠卸载重挂载清空本地状态
         （useState 没有 reset API；这一步顺带保证了 E2「新旧会话互不干扰」）。
+
+        响应式：窄屏侧栏没有资格占一列 —— 224px 固定宽度在手机上
+        会把聊天区压到一两百像素（实测截图），改成上下堆叠后
+        侧栏自己变成横向滚动的一行；lg 及以上才恢复左右布局。
       */}
-      <section className="flex items-start gap-6">
+      <section className="flex flex-col gap-4 lg:flex-row lg:items-start lg:gap-6">
         <ConversationSidebar
           kbId={kb.id}
           conversations={sidebarItems}

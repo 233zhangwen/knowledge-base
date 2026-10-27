@@ -32,10 +32,18 @@ export function ConversationSidebar({
   activeId: string | null;
 }) {
   return (
-    <aside className="flex w-56 shrink-0 flex-col gap-2">
+    /**
+     * 响应式（2026-10-27 改版）：
+     *   窄屏  → 横向滚动的一行（会话变成 chip，不占纵向空间）；
+     *   lg 起 → 恢复 224px 的竖列。
+     * 之前固定 w-56 的竖列在手机上会把聊天区压到一两百像素 ——
+     * 布局挤的直接根因。overflow-x-auto 让"会话多"在窄屏下表现为横向滑，
+     * 而不是把页面撑长。
+     */
+    <aside className="flex w-full shrink-0 flex-row items-start gap-2 overflow-x-auto pb-1 lg:w-56 lg:flex-col lg:overflow-visible lg:pb-0">
       <Link
         href={`/kb/${kbId}`}
-        className={`rounded-lg border px-3 py-2 text-center text-sm ${
+        className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-center text-sm ${
           activeId === null
             ? 'border-zinc-900 bg-zinc-900 text-white'
             : 'hover:bg-zinc-50'
@@ -45,14 +53,14 @@ export function ConversationSidebar({
       </Link>
 
       {conversations.length === 0 ? (
-        <p className="px-1 text-xs text-zinc-400">还没有会话。问一句就有了。</p>
+        <p className="shrink-0 px-1 py-2 text-xs text-zinc-400">还没有会话。问一句就有了。</p>
       ) : (
-        <ul className="flex flex-col gap-1">
+        <ul className="flex flex-row gap-1 lg:flex-col">
           {conversations.map((c) => (
-            <li key={c.id}>
+            <li key={c.id} className="shrink-0 lg:w-full">
               <Link
                 href={`/kb/${kbId}?c=${c.id}`}
-                className={`block rounded-lg border px-3 py-2 text-xs ${
+                className={`block max-w-[240px] rounded-lg border px-3 py-2 text-xs ${
                   c.id === activeId
                     ? 'border-zinc-400 bg-zinc-100'
                     : 'hover:bg-zinc-50'
@@ -60,7 +68,7 @@ export function ConversationSidebar({
               >
                 {/* title 理论上不会为空（建会话时就写了），但仍要兜住 —— 直接渲染 null 会白屏一格 */}
                 <p className="truncate font-medium">{c.title ?? '未命名会话'}</p>
-                <p className="mt-0.5 text-zinc-400">
+                <p className="mt-0.5 whitespace-nowrap text-zinc-400">
                   {c.messageCount} 条 · {c.updatedAtText}
                 </p>
               </Link>
