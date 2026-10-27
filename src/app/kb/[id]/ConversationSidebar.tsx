@@ -14,6 +14,8 @@
  */
 import Link from 'next/link';
 
+import { NewConversationButton } from './NewConversationButton';
+
 export type SidebarItem = {
   id: string;
   title: string | null;
@@ -41,16 +43,8 @@ export function ConversationSidebar({
      * 而不是把页面撑长。
      */
     <aside className="flex w-full shrink-0 flex-row items-start gap-2 overflow-x-auto pb-1 lg:w-56 lg:flex-col lg:overflow-visible lg:pb-0">
-      <Link
-        href={`/kb/${kbId}`}
-        className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-center text-sm ${
-          activeId === null
-            ? 'border-zinc-900 bg-zinc-900 text-white'
-            : 'hover:bg-zinc-50'
-        }`}
-      >
-        ＋ 新对话
-      </Link>
+      {/* 必须是按钮不是 Link：见 NewConversationButton.tsx 顶部的 bug 复盘 */}
+      <NewConversationButton kbId={kbId} active={activeId === null} />
 
       {conversations.length === 0 ? (
         <p className="shrink-0 px-1 py-2 text-xs text-zinc-400">还没有会话。问一句就有了。</p>

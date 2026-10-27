@@ -24,10 +24,10 @@ export default async function KnowledgeBaseDetailPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ c?: string }>;
+  searchParams: Promise<{ c?: string; n?: string }>;
 }) {
   const { id } = await params;
-  const { c } = await searchParams;
+  const { c, n } = await searchParams;
   const userId = await requireUserId();
 
   const kb = await prisma.knowledgeBase.findFirst({
@@ -183,6 +183,9 @@ export default async function KnowledgeBaseDetailPage({
 
         key={activeConversationId}：切换会话时靠卸载重挂载清空本地状态
         （useState 没有 reset API；这一步顺带保证了 E2「新旧会话互不干扰」）。
+        #n：一次性 nonce（NewConversationButton 点击时生成）。没有它，
+        在"新对话"里问过一句后再点「新对话」，key 两次都是 'new'，
+        面板不重挂载，上一段对话就残留了（2026-10-27 实测 bug）。
 
         响应式：窄屏侧栏没有资格占一列 —— 224px 固定宽度在手机上
         会把聊天区压到一两百像素（实测截图），改成上下堆叠后
@@ -195,7 +198,7 @@ export default async function KnowledgeBaseDetailPage({
           activeId={activeConversationId}
         />
         <ChatPanel
-          key={activeConversationId ?? 'new'}
+          key={`${activeConversationId ?? 'new'}#${n ?? ''}`}
           kbId={kb.id}
           conversationId={activeConversationId}
           initialMessages={initialMessages}

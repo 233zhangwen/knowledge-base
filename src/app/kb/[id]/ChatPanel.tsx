@@ -128,6 +128,11 @@ export function ChatPanel({
         feed(cursor, decoder.decode(value, { stream: true }));
         if (cursor.conversationId && cursor.conversationId !== activeConversationId) {
           setActiveConversationId(cursor.conversationId);
+          // 新会话诞生：把 id 同步进 URL。用 history.replaceState 而不是 router.replace ——
+          // 后者会触发服务端重渲染，key 一变就把正在流式的面板卸载了。
+          // replaceState 只改地址栏：不打断流，但刷新/后退/复制链接都能回到这个会话
+          // （与点开历史会话走同一条 ?c= 路径），spec A1 对"刚创建的会话"也成立了。
+          window.history.replaceState(null, '', `/kb/${kbId}?c=${cursor.conversationId}`);
         }
         updateStreamingSlot(cursor);
       }
