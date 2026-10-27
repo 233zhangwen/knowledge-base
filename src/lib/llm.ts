@@ -14,6 +14,7 @@
  *   enable_thinking: false 无效（思考 token 照常计费）。
  *   关闭后首字延迟约 630ms，是验收 B1「1.5 秒出首字」的基线。
  */
+import PROMPT from './rag-prompt.json';
 import type { RetrievedChunk } from './retrieve';
 
 export type ChatMessage = {
@@ -62,40 +63,54 @@ export function buildRagMessages(
    * 编号 [1]..[N] 与 route.ts 下发的 citations 数组**同序** ——
    * 这是 spec C1（引用一致性）成立的前提：前端展示的第 i 条，
    * 就是模型看到的 [i]。两边的顺序只要有一处不一致，引用就全错位。
+   *
+   * ⚠️ 文本全部来自 rag-prompt.json（W6）：评测脚本读同一份文件拼 prompt，
+   * 所以"改 prompt"这个动作在线上和评测里是同一个改动。写死在这里的话，
+   * C4-b 会拿线上新 prompt 的答案去和旧 prompt 的评测结果对比，结论无效。
+   * replace 一律传函数 —— 否则 chunk 内容里若出现 "{question}" 这种字面量，
+   * 会被二次替换（占位符注入）。
    */
   const context = chunks.length
     ? chunks
-        .map(
-          (c, i) =>
-            `[${i + 1}] （来自文档《${c.documentTitle}》第 ${c.chunkIndex + 1} 段）\n${c.content}`,
+        .map((c, i) =>
+          PROMPT.contextItem
+            .replace('{no}', () => String(i + 1))
+            .replace('{title}', () => c.documentTitle)
+            .replace('{page}', () => String(c.chunkIndex + 1))
+            .replace('{content}', () => c.content),
         )
         .join('\n\n')
     : // 一个片段都没召回时也要把话说死，否则模型面对空上下文会自行发挥
-      '（本次没有检索到任何参考资料）';
+      PROMPT.contextEmpty;
+
+  /**
+   * 规则编号必须**动态生成**，不能写死 "4." / "5."。
+   * W6 往 rules 里加了第 4 条（禁止 markdown）之后，硬编码立刻会变成
+   * "4. 只有…" 和 "4. 只允许引用…" 两条并列 —— 编号重复不报错、不影响运行，
+   * 但会让后来读 prompt 的模型把它当成同一条，规则优先级失真。
+   */
+  const rules = [
+    ...PROMPT.system.rules,
+    chunks.length
+      ? PROMPT.system.citationRule.replace('{max}', () => String(chunks.length))
+      : PROMPT.system.noContextRule,
+  ];
+  if (history.length) rules.push(PROMPT.system.historyRule);
+
+  const systemContent = [PROMPT.system.intro, ...rules.map((r, i) => `${i + 1}. ${r}`)].join('\n');
 
   return [
     {
       role: 'system',
-      content: [
-        '你是一个知识库问答助手，必须严格遵守以下规则：',
-        '1. 只依据用户消息中提供的「参考资料」回答问题。',
-        '2. 回答中引用资料时，在对应句子末尾标注来源编号，如 [1]、[2]。',
-        '3. 如果参考资料不足以回答问题，直接回答"文档中没有相关内容"，禁止使用你自己的知识补全，禁止编造。',
-        chunks.length
-          ? `4. 只允许引用实际提供的编号（[1] 到 [${chunks.length}]），禁止编造引用。`
-          : '4. 本次没有提供任何参考资料，直接回答"文档中没有相关内容"。',
-        history.length
-          ? '5. 用户会就上文继续追问。追问里若出现代词（它、那、第二项、后者的一半），一律先从上文确定指代对象，再作答。'
-          : '',
-      ]
-        .filter(Boolean)
-        .join('\n'),
+      content: systemContent,
     },
     // 历史夹在 system 与当前问题之间（见注释里的顺序说明）
     ...history,
     {
       role: 'user',
-      content: `参考资料：\n\n${context}\n\n问题：${question}`,
+      content: PROMPT.userPrefix
+        .replace('{context}', () => context)
+        .replace('{question}', () => question),
     },
   ];
 }
@@ -136,6 +151,13 @@ export async function* streamChat(
         model,
         stream: true,
         messages,
+        /**
+         * temperature 与评测脚本同源（都读 rag-prompt.json 的 sampling）。
+         * W6 实测：不设时走服务端默认，同一配置两次跑同一个问题，
+         * 一次给"未满折旧期不能换"、一次给"文档中没有相关内容" ——
+         * 答案层的"改前/改后对比"因此无法区分是 prompt 起了作用还是抽签。
+         */
+        temperature: PROMPT.sampling.temperature,
         // 实测唯一有效的关闭思考方式（见文件头注释）
         thinking: { type: 'disabled' },
         // 让最后一个 chunk 带 usage，E2 的成本观测靠它

@@ -1,0 +1,205 @@
+[
+  {
+    "id": "c01",
+    "section": "一、入职与考勤",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "上午最晚几点到岗仍然算正常出勤？",
+    "expectChunks": [{ "index": 0, "snippet": "# 星海科技员工手册" }],
+    "answerMustContain": ["9:40"]
+  },
+  {
+    "id": "c02",
+    "section": "一、入职与考勤",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "远程办公每周最多可以几天？",
+    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "answerMustContain": ["2 天"]
+  },
+  {
+    "id": "c03",
+    "section": "二、休假制度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "正式员工每年有多少天带薪年假？",
+    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "answerMustContain": ["17"]
+  },
+  {
+    "id": "c04",
+    "section": "二、休假制度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "年假最多可以跨年结转几天？",
+    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "answerMustContain": ["5 天"]
+  },
+  {
+    "id": "c05",
+    "section": "二、休假制度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "全年病假在 10 天以内按什么比例发放工资？",
+    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "answerMustContain": ["90%"]
+  },
+  {
+    "id": "c06",
+    "section": "二、休假制度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "婚假有多少天？",
+    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "answerMustContain": ["12"]
+  },
+  {
+    "id": "c07",
+    "section": "三、年度额度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "年度培训基金是多少钱？",
+    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "answerMustContain": ["8000"]
+  },
+  {
+    "id": "c08",
+    "section": "三、年度额度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "团队建设费个人可以单独申领吗？",
+    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "answerMustContain": ["统一支配"]
+  },
+  {
+    "id": "c09",
+    "section": "三、年度额度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "年度额度里金额最高的是哪一项？",
+    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "answerMustContain": ["培训基金", "8000"]
+  },
+  {
+    "id": "c10",
+    "section": "四、费用报销",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "因公餐费每人每餐的报销上限是多少？",
+    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "answerMustContain": ["380"]
+  },
+  {
+    "id": "c11",
+    "section": "四、费用报销",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "一线城市出差住宿每晚限额多少？",
+    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "answerMustContain": ["600"]
+  },
+  {
+    "id": "c12",
+    "section": "五、设备与信息安全",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "可以在办公电脑上安装未经信息技术部批准的软件吗？",
+    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "answerMustContain": ["禁止"]
+  },
+  {
+    "id": "c13",
+    "section": "五、设备与信息安全",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "机密级文件打印后要怎么处理？",
+    "expectChunks": [{ "index": 5, "snippet": "端管理软件，并开启全盘加密" }],
+    "answerMustContain": ["碎毁"]
+  },
+  {
+    "id": "c14",
+    "section": "六、绩效与调薪",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "绩效 S 档最多占部门人数的多少？",
+    "expectChunks": [{ "index": 5, "snippet": "端管理软件，并开启全盘加密" }],
+    "answerMustContain": ["10%"]
+  },
+  {
+    "id": "c15",
+    "section": "七、培训与成长",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "新员工的导师带训期有多长？",
+    "expectChunks": [{ "index": 6, "snippet": "，形式为午餐会" }],
+    "answerMustContain": ["6 周"]
+  },
+  {
+    "id": "c16",
+    "section": "九、申诉与监督",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "举报经查实后奖励怎么计算，有上限吗？",
+    "expectChunks": [{ "index": 6, "snippet": "，形式为午餐会" }],
+    "answerMustContain": ["5%", "20000"]
+  },
+  {
+    "id": "c17",
+    "section": "十、差旅与外派",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "出差期间每日伙食补助是多少？",
+    "expectChunks": [{ "index": 7, "snippet": "违规行为可通过匿名信箱" }],
+    "answerMustContain": ["120"]
+  },
+  {
+    "id": "c18",
+    "section": "十、差旅与外派",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "长期外派员工每月有多少外派津贴？",
+    "expectChunks": [{ "index": 7, "snippet": "违规行为可通过匿名信箱" }],
+    "answerMustContain": ["2500"]
+  },
+  {
+    "id": "c19",
+    "section": "跨章节（年假 × 婚假）",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "一名正式员工在同一年里休完年假与婚假，合计最多可休多少天带薪假期？",
+    "expectChunks": [
+      { "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" },
+      { "index": 2, "snippet": "有带薪年假 17 天" }
+    ],
+    "answerMustContain": ["29"]
+  },
+  {
+    "id": "c20",
+    "section": "十一、离职与交接",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "离职时未休年假最多可以折算几天？",
+    "expectChunks": [{ "index": 8, "snippet": "交接须填写《离职交接单》" }],
+    "answerMustContain": ["10"]
+  },
+  {
+    "id": "c21",
+    "section": "改述·二、休假制度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "刚入职不到半年，年假能休几天？",
+    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "answerMustContain": ["折算"]
+  },
+  {
+    "id": "c22",
+    "section": "改述·四、费用报销",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "出差住酒店的费用怎么报？",
+    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "answerMustContain": ["分级"]
+  },
+  {
+    "id": "c23",
+    "section": "改述·五、设备与信息安全",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "在公司工作三年了，笔记本能申请换新的吗？",
+    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "answerMustContain": ["折旧"]
+  },
+  {
+    "id": "c24",
+    "section": "改述·一、入职与考勤",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "远程办公的日子里，多久不回企业消息会被算成事假？",
+    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "answerMustContain": ["30 分钟"]
+  },
+  {
+    "id": "c25",
+    "section": "改述·三、年度额度",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "公司给员工健身补贴吗，多少钱？",
+    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "answerMustContain": ["1200"]
+  }
+]
