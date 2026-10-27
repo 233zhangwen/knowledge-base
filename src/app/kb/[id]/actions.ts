@@ -213,3 +213,42 @@ export async function deleteDocument(
 
   return {};
 }
+
+/**
+ * 删除一个会话（连同它的全部消息）。
+ *
+ * Message 对 Conversation 是 onDelete: Cascade（schema 里定的），
+ * 所以这里只删会话行 —— 消息跟着数据库级联走，不需要手动清。
+ * 引用快照也在消息里，一起没了，这正是"删除"该有的语义。
+ */
+export async function deleteConversation(
+  _prev: ActionState,
+  formData: FormData,
+): Promise<ActionState> {
+  const userId = await requireUserId();
+
+  const id = String(formData.get('id') ?? '');
+  if (!id) {
+    return { error: '缺少会话 id' };
+  }
+
+  /** 归属校验和 deleteDocument 同一套：客户端来的 id 必须和 userId 做 AND */
+  const conversation = await prisma.conversation.findFirst({
+    where: { id, kb: { userId } },
+    select: { id: true, kbId: true },
+  });
+  if (!conversation) {
+    return { error: '会话不存在或无权删除' };
+  }
+
+  const { count } = await prisma.conversation.deleteMany({
+    where: { id, kb: { userId } },
+  });
+  if (count === 0) {
+    return { error: '会话不存在或无权删除' };
+  }
+
+  revalidatePath(`/kb/${conversation.kbId}`);
+
+  return {};
+}

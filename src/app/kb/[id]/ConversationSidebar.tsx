@@ -15,6 +15,7 @@
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
 
+import { DeleteConversationButton } from './DeleteConversationButton';
 import { NewConversationButton } from './NewConversationButton';
 
 export type SidebarItem = {
@@ -131,7 +132,10 @@ export function ConversationSidebar({
 }
 
 /**
- * 单条会话。窄屏浮层和 lg 竖列共用 —— 两份拷贝迟早改不同步。
+ * 单条会话 = 「打开」+「删除」两个动作并排。
+ *
+ * 为什么不再让整条是一个 Link：删除按钮不能嵌在 <a> 里（嵌套可交互元素
+ * 是非法 HTML，hydration 也会出问题），所以拆成 Link（flex-1 占满）+ 按钮。
  * 之前 chip 版的 max-w-[240px] 删掉了：竖列里条目就是全宽，截断交给 truncate。
  *
  * onNavigate：浮层里点完一条要收起面板 —— Link 导航是 RSC 重渲染，
@@ -149,11 +153,11 @@ function ConversationLink({
   onNavigate?: () => void;
 }) {
   return (
-    <li className="w-full">
+    <li className="flex w-full items-start gap-1">
       <Link
         href={`/kb/${kbId}?c=${item.id}`}
         onClick={onNavigate}
-        className={`block rounded-lg border px-3 py-2 text-xs ${
+        className={`block min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs ${
           active ? 'border-zinc-400 bg-zinc-100' : 'hover:bg-zinc-50'
         }`}
       >
@@ -163,6 +167,9 @@ function ConversationLink({
           {item.messageCount} 条 · {item.updatedAtText}
         </p>
       </Link>
+
+      {/* 删除入口：浮层和 lg 竖列都有；两步确认在按钮组件内部 */}
+      <DeleteConversationButton id={item.id} kbId={kbId} active={active} />
     </li>
   );
 }
