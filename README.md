@@ -2,6 +2,9 @@
 
 个人知识库问答（RAG）应用。上传文档 → 切片向量化 → 基于检索的问答，回答带引用溯源。
 
+**线上演示**：https://afei-knowledge-base.netlify.app （GitHub 账号登录即可试用）
+部署与运维手册：`docs/DEPLOY.md`
+
 技术栈：Next.js（App Router）+ TypeScript + Tailwind + NextAuth v5 + Prisma + PostgreSQL(pgvector) + Vercel AI SDK。
 
 完整 README（含架构图、评测方法、部署说明）在 W8 收尾时写。下面先记录**真实踩过的决策**，这部分比代码更能说明问题。

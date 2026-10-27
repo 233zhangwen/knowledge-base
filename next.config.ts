@@ -2,6 +2,22 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   /**
+   * 把"当前构建对应哪个 commit"注入到运行时，供 /api/health 报告。
+   *
+   * 为什么要这个：线上出问题时第一个要回答的问题永远是"现在跑的是哪一版"。
+   * 平台的构建日志能查到，但要翻好几层；打在健康检查里一眼就能看见，
+   * 也方便把"我本地好的、线上坏的"这种对话快速收敛。
+   * COMMIT_REF 是 Netlify 注入的；VERCEL_GIT_COMMIT_SHA 是 Vercel 的。
+   */
+  env: {
+    NEXT_PUBLIC_COMMIT_REF: (
+      process.env.COMMIT_REF ??
+      process.env.VERCEL_GIT_COMMIT_SHA ??
+      'dev'
+    ).slice(0, 7),
+  },
+
+  /**
    * Server Action 的请求体上限，默认只有 1MB —— 不配这行，
    * 超过 1MB 的上传会在轮到我们代码之前就被框架拒绝。
    *
