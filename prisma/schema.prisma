@@ -123,6 +123,27 @@ model Document {
   chunks Chunk[]
 }
 
+/// 对象存储的数据库落地（storage.ts 的 dbStorage 驱动使用）。
+///
+/// 为什么要有这张表：serverless 平台（Netlify / Vercel 函数）的文件系统是
+/// 只读的，storage.ts 的本地磁盘驱动在它们上面必然 ENOENT（生产实测
+/// `mkdir '/var/task/.storage'` 失败）。BYTEA 存字节：单文件上限 4MB
+/// （应用层 MAX_FILE_SIZE），远在 Postgres 大字段舒适区之内。
+///
+/// 为什么不直接用平台对象存储（Netlify Blobs / Vercel Blob）：
+/// 那会把存储绑死在某一家平台，换平台就得迁移。Postgres 两边通吃，
+/// 且和 Chunk 同一个可用性域 —— 备份、迁移只多一张表。
+///
+/// key 与 Document.storageKey 对应，无外键（对象清理走 removeQuietly
+/// 的"尽力删除"语义，同磁盘驱动；数据库记录删除不该被存储层卡死）。
+model ObjectFile {
+  key         String   @id
+  bytes       Bytes
+  contentType String?
+  sizeBytes   Int
+  createdAt   DateTime @default(now())
+}
+
 model Chunk {
   id         String @id @default(cuid())
   content    String

@@ -1,16 +1,23 @@
 /**
  * 对象存储抽象层。
  *
- * 为什么要这一层：业务代码不许知道原件存在哪。
- *   - 本地开发 → 写仓库根的 `.storage/` 目录（不进版本库）
- *   - 生产 Vercel → 写 Vercel Blob
- * 切换只靠一个环境变量 `BLOB_READ_WRITE_TOKEN`：有就用 Blob，没有就用本地磁盘。
+ * 为什么要这一层：业务代码不许知道原件存在哪。三个驱动按环境变量选择：
+ *   - BLOB_READ_WRITE_TOKEN 有值  → Vercel Blob（为将来回 Vercel 留的路径）
+ *   - STORAGE_DRIVER=db          → Postgres（BYTEA 表 ObjectFile）
+ *   - 都没有                      → 本地磁盘 .storage/（仅本地开发可用）
  *
- * 这套"provider 可切换"的写法跟 LLM 那层（`@ai-sdk/openai` + baseURL 指向国内）是同一个思路：
+ * 为什么要有 db 驱动：serverless 平台（Netlify / Vercel 的函数）文件系统
+ * 只读，磁盘驱动在它们上面必然 ENOENT（生产实测：mkdir '/var/task/.storage'
+ * 失败）。选 Postgres 而不是 Netlify Blobs，是为了不把存储绑死在单一平台
+ * —— 换平台不用迁移数据，且和 Chunk 同一个可用性域。
+ *
+ * 这套"provider 可切换"的写法跟 LLM 那层（baseURL 指向国内）是同一个思路：
  * 接口稳定，实现可换。好处是——本地能不能跑，不取决于你有没有开通某个云服务。
  */
 import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+
+import { prisma } from '@/lib/prisma';
 
 /** 本地 driver 的根目录。生产环境一定有 Blob token，走不到这里。 */
 const LOCAL_ROOT = path.join(process.cwd(), '.storage');
@@ -53,6 +60,25 @@ const localStorage: ObjectStorage = {
   },
 };
 
+const dbStorage: ObjectStorage = {
+  async put(key, body, contentType) {
+    assertSafeKey(key);
+    // upsert 而不是 create：同 key 重复 put（重新上传覆盖语义）不该炸。
+    // bytes 是 Uint8Array，Prisma 7 的 Bytes 字段直接收 Buffer/Uint8Array。
+    await prisma.objectFile.upsert({
+      where: { key },
+      update: { bytes: Buffer.from(body), contentType, sizeBytes: body.byteLength },
+      create: { key, bytes: Buffer.from(body), contentType, sizeBytes: body.byteLength },
+    });
+  },
+
+  async remove(key) {
+    assertSafeKey(key);
+    // deleteMany 天然幂等（0 行删除也算成功），与磁盘驱动的 { force: true } 语义对齐
+    await prisma.objectFile.deleteMany({ where: { key } });
+  },
+};
+
 const blobStorage: ObjectStorage = {
   async put(key, body, contentType) {
     assertSafeKey(key);
@@ -85,8 +111,19 @@ const blobStorage: ObjectStorage = {
   },
 };
 
-/** 模块加载时就定下来。生产环境的环境变量在进程启动前已注入，不会中途变。 */
-export const storage: ObjectStorage = process.env.BLOB_READ_WRITE_TOKEN ? blobStorage : localStorage;
+/**
+ * 模块加载时就定下来。生产环境的环境变量在进程启动前已注入，不会中途变。
+ *
+ * 优先级：显式 BLOB token > 显式 STORAGE_DRIVER=db > 磁盘。
+ * Netlify 上配 STORAGE_DRIVER=db；Vercel 上将来配 BLOB_READ_WRITE_TOKEN；
+ * 本地什么都不配，走磁盘（零依赖起 dev）。
+ */
+export const storage: ObjectStorage =
+  process.env.BLOB_READ_WRITE_TOKEN
+    ? blobStorage
+    : process.env.STORAGE_DRIVER === 'db'
+      ? dbStorage
+      : localStorage;
 
 /**
  * "尽力删除"：失败只记录，不向上抛。
