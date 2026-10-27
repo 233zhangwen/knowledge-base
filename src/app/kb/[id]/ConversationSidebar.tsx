@@ -13,6 +13,7 @@
  *   前端再 fetch 一次消息 = 多一个请求、多一段 loading 状态，什么也没换到。
  */
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 
 import { NewConversationButton } from './NewConversationButton';
 
@@ -33,25 +34,49 @@ export function ConversationSidebar({
   conversations: SidebarItem[];
   activeId: string | null;
 }) {
+  /**
+   * 窄屏浮层（2026-10-27 方案 C）的开合态。
+   * 只在窄屏渲染的那半边用到；lg 竖列是纯静态标记，不吃这个状态。
+   */
+  const [panelOpen, setPanelOpen] = useState(false);
+  /** 点外部关闭：需要拿到"浮层 + 按钮"这整块区域的 DOM 引用 */
+  const panelRootRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 点外部关闭 + Esc 关闭。
+   * 用 pointerdown 而不是 click：按下那一刻就判定，避免"点别的按钮先触发
+   * 关闭又触发那个按钮的行为"这类时序坑。open 时才挂监听，省空转。
+   */
+  useEffect(() => {
+    if (!panelOpen) return;
+
+    function onPointerDown(e: PointerEvent) {
+      if (panelRootRef.current && !panelRootRef.current.contains(e.target as Node)) {
+        setPanelOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPanelOpen(false);
+    }
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [panelOpen]);
+
   return (
     /**
-     * 响应式（2026-10-27 二次改版，方案 A：折叠列表）：
-     *   窄屏  → "历史会话（N）"折叠起来，点开是全宽竖列；
+     * 响应式（2026-10-27 三次改版，方案 C：浮层抽屉）：
+     *   窄屏  → "历史会话（N）"按钮点开一个悬浮面板，盖在聊天区上方；
      *   lg 起 → 维持 224px 竖列常开。
      *
-     * 为什么放弃横向滚动 chip（上一版）：
-     *   ① 标题是用户的提问，天然是长句，chip 里永远要截断；
-     *   ② 第二行"N 条 · 日期"在窄 chip 里被硬截成"N 条 · 20"；
-     *   ③ 右缘生硬切断，看不出后面还有会话、可以滑；
-     *   ④ 选中项浅灰底和新对话按钮挤一行，一眼认不出"正在看哪个"。
-     * 折叠列表把这三件事一次解决：标题完整可见、不存在截断、
-     * 展开后的列表和 lg 竖列复用同一套渲染。
-     *
-     * 为什么用原生 <details> 而不是 useState + 条件渲染：
-     *   开合是纯展示态，不参与任何数据流 —— 用平台自带的能力，
-     *   零 JS、零状态管理、键盘和读屏支持白送。这也意味着它必须是
-     *   Client Component 之外的普通标记（本文件整体是 server component，
-     *   details 是 HTML 原生行为，不需要 'use client'）。
+     * 演进史：横向滚动 chip（截断/无滑动暗示/选中态弱）→ details 折叠列表
+     * （零 JS，但展开会把聊天区整个往下推）→ 浮层（不推挤内容）。
+     * 浮层的代价是要自己管开合、点外部关闭和 Esc —— 见上面的 effect，
+     * 这是在为"不推挤内容"付的三笔账，没有白来的浮层。
      */
     <aside className="flex w-full shrink-0 flex-col gap-2 lg:w-56">
       <div className="flex flex-row items-start gap-2 lg:flex-col">
@@ -62,19 +87,37 @@ export function ConversationSidebar({
           <p className="px-1 py-2 text-xs text-zinc-400">还没有会话。问一句就有了。</p>
         ) : (
           <>
-            {/* 窄屏：折叠列表。flex-1 让展开的列表吃掉按钮右侧的全部剩余宽度 */}
-            <details className="min-w-0 flex-1 lg:hidden">
-              <summary className="inline-flex cursor-pointer select-none items-center whitespace-nowrap rounded-lg border px-3 py-2 text-sm hover:bg-zinc-50">
+            {/* 窄屏：按钮 + 悬浮面板。relative 挂在这一小块上，面板以它为锚 */}
+            <div ref={panelRootRef} className="relative min-w-0 flex-1 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setPanelOpen((v) => !v)}
+                aria-expanded={panelOpen}
+                className={`whitespace-nowrap rounded-lg border px-3 py-2 text-sm ${
+                  panelOpen ? 'border-zinc-400 bg-zinc-100' : 'hover:bg-zinc-50'
+                }`}
+              >
                 历史会话（{conversations.length}）
-              </summary>
-              <ul className="mt-2 flex flex-col gap-1 rounded-lg border border-zinc-200 p-1">
-                {conversations.map((c) => (
-                  <ConversationLink key={c.id} kbId={kbId} item={c} active={c.id === activeId} />
-                ))}
-              </ul>
-            </details>
+              </button>
 
-            {/* lg 及以上：竖列常开，和折叠列表是同一套条目渲染 */}
+              {panelOpen ? (
+                <div className="absolute left-0 top-full z-20 mt-1 w-[280px] max-w-[calc(100vw-3rem)] rounded-lg border border-zinc-200 bg-white p-1">
+                  <ul className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
+                    {conversations.map((c) => (
+                      <ConversationLink
+                        key={c.id}
+                        kbId={kbId}
+                        item={c}
+                        active={c.id === activeId}
+                        onNavigate={() => setPanelOpen(false)}
+                      />
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+            </div>
+
+            {/* lg 及以上：竖列常开，和浮层是同一套条目渲染 */}
             <ul className="hidden flex-col gap-1 lg:flex">
               {conversations.map((c) => (
                 <ConversationLink key={c.id} kbId={kbId} item={c} active={c.id === activeId} />
@@ -88,22 +131,28 @@ export function ConversationSidebar({
 }
 
 /**
- * 单条会话。窄屏折叠列表和 lg 竖列共用 —— 两份拷贝迟早改不同步。
+ * 单条会话。窄屏浮层和 lg 竖列共用 —— 两份拷贝迟早改不同步。
  * 之前 chip 版的 max-w-[240px] 删掉了：竖列里条目就是全宽，截断交给 truncate。
+ *
+ * onNavigate：浮层里点完一条要收起面板 —— Link 导航是 RSC 重渲染，
+ * 组件实例不会卸载，useState 会活着，不主动关面板就会一直开着挡视线。
  */
 function ConversationLink({
   kbId,
   item,
   active,
+  onNavigate,
 }: {
   kbId: string;
   item: SidebarItem;
   active: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <li className="w-full">
       <Link
         href={`/kb/${kbId}?c=${item.id}`}
+        onClick={onNavigate}
         className={`block rounded-lg border px-3 py-2 text-xs ${
           active ? 'border-zinc-400 bg-zinc-100' : 'hover:bg-zinc-50'
         }`}
