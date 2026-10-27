@@ -8,3 +8,13 @@
 [build]
   command = "npm run build"
   publish = ".next"
+
+# 第二次部署失败修的：Netlify secrets scanning 的机制是「把每个环境变量的
+# 值在构建产物/仓库文件里找一遍，命中即判为泄密」。它分不清密钥和公共值，
+# 把模型名（BAAI/...）和 API 端点 URL 也当成了 secret（2026-10-27 实测，
+# 用 scripts/audit-secrets.mjs 反查过：真正的 sk- 密钥/连接串/AUTH_SECRET
+# 在仓库内零命中，不泄露，故无需换 key，只需把非机密键排除出扫描）。
+# ⚠️ 以后新增环境变量时：真密钥（sk-、连接串）绝不能加进这里；
+#    加进这里的必须是「本来就写死在代码/文档里的公开值」。
+[build.environment]
+  SECRETS_SCAN_OMIT_KEYS = "EMBED_BASE_URL,EMBED_MODEL,LLM_BASE_URL,LLM_MODEL,RERANK_MODEL"
