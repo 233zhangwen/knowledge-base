@@ -102,7 +102,7 @@ export function ConversationSidebar({
 
               {panelOpen ? (
                 <div className="absolute left-0 top-full z-20 mt-1 w-[280px] max-w-[calc(100vw-3rem)] rounded-lg border border-zinc-200 bg-white p-1">
-                  <ul className="flex max-h-[60vh] flex-col gap-1 overflow-y-auto">
+                  <ul className="flex max-h-[288px] flex-col gap-1 overflow-y-auto">
                     {conversations.map((c) => (
                       <ConversationLink
                         key={c.id}
