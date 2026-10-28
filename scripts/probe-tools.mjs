@@ -144,6 +144,13 @@ async function main() {
   const r5 = await chat([{ role: 'user', content: question }], { withThinking: false });
   const s5 = summarize('D2 去掉 thinking（对照）', r5, Date.now() - t);
   console.log(`>>> D2 对照：tool_calls=${s5.calls.length > 0 ? '仍触发' : '未触发'}`);
+
+    // ---------- D1：不带工具重跑 A2（反证：证明 A2 触发工具是因为工具存在） ----------
+  t = Date.now();
+  const r6 = await chat([{ role: 'user', content: question }], { tools: null });
+  const s6 = summarize('D1 不带工具（反证，期望不出现 tool_calls）', r6, Date.now() - t);
+  console.log(`>>> D1 反证：tool_calls=${s6.calls.length === 0 ? '0，PASS' : '仍出现，FAIL'}`);
+
 }
 
 main().catch((e) => {
