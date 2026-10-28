@@ -12,9 +12,15 @@
  */
 import {
   createCursor,
+  createCursorV2,
+  encodeCitationsLine,
   encodeErrorLine,
   encodeHeadLine,
+  encodeHeadLineV2,
+  encodeToolLine,
   feed,
+  feedV2,
+  TEXT_START,
   type Citation,
 } from '../src/lib/chat-protocol.ts';
 
@@ -112,6 +118,59 @@ console.log('\n=== 7. 空召回：citations 为空数组 ===');
   const c = run([encodeHeadLine({ citations: [], conversationId: null }), '文档中没有相关内容。']);
   check('citations 为空', c.citations.length, 0);
   check('答案照常', c.answer, '文档中没有相关内容。');
+}
+
+console.log('\n=== 8. v2：无事件流（闲聊，本次 bug 的回归用例）===');
+// 2026-10-28 实测 bug：闲聊不触发工具 → 服务端第一行后直接发文本，
+// 旧 feedV2 靠"找 \n 逐行猜边界"，没有换行的答案全被扣在 lineBuf，前端空白到刷新。
+{
+  const chunks = [
+    encodeHeadLineV2('conv-1'),
+    TEXT_START,
+    '你好！有什么',
+    '可以帮您？',
+  ];
+  const c = createCursorV2();
+  for (const chunk of chunks) feedV2(c, chunk);
+  check('v2 无换行答案完整累积', c.answer, '你好！有什么可以帮您？');
+  check('v2 无引用', c.citations.length, 0);
+  check('v2 会话 id', c.conversationId, 'conv-1');
+}
+
+console.log('\n=== 9. v2：事件行 + 哨兵 + 文本（完整事件流）===');
+{
+  const whole =
+    encodeHeadLineV2('conv-2') +
+    encodeToolLine('星海科技 年假') +
+    encodeCitationsLine(CITES) +
+    TEXT_START +
+    '根据手册，年假 17 天。';
+  // 任意乱切：每 7 个字符一块
+  const c = createCursorV2();
+  for (let i = 0; i < whole.length; i += 7) feedV2(c, whole.slice(i, i + 7));
+  check('v2 工具问题', c.toolQuestion, '星海科技 年假');
+  check('v2 citations 解析', c.citations.length, 2);
+  check('v2 文本不含哨兵', c.answer, '根据手册，年假 17 天。');
+  check('v2 会话 id', c.conversationId, 'conv-2');
+}
+
+console.log('\n=== 10. v2：事件阶段就出错（\u0000 在哨兵前到达）===');
+{
+  const c = createCursorV2();
+  feedV2(c, encodeHeadLineV2('conv-3'));
+  feedV2(c, encodeToolLine('测试问题') + encodeErrorLine('embedding 挂了'));
+  check('v2 错误态', c.errorMode, true);
+  check('v2 错误消息', c.error.trim(), 'embedding 挂了');
+}
+
+console.log('\n=== 11. v2：哨兵和文本边界跨块 ===');
+{
+  const whole = encodeHeadLineV2('conv-4') + TEXT_START + '答案正文';
+  const cut = whole.indexOf(TEXT_START) + 1; // 哨兵是上一块的最后一个字符
+  const c = createCursorV2();
+  feedV2(c, whole.slice(0, cut));
+  feedV2(c, whole.slice(cut));
+  check('v2 跨块后文本完整', c.answer, '答案正文');
 }
 
 console.log(failed === 0 ? '\n全部通过' : `\n有 ${failed} 条失败`);

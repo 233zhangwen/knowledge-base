@@ -141,12 +141,13 @@ export function feed(cursor: StreamCursor, text: string): boolean {
 //   第一行： {"v":2,"conversationId":"..."}\n
 //   事件行： {"citations":[...]}（可多次，客户端按 chunkId 去重合并）
 //           {"tool":{"question":"..."}}（检索状态，E2 选做用）
+//   哨兵：  \u0001（文本起始标记，服务端发首个文本增量前必发一次）
 //   之后：   纯文本增量（与 v1 相同）
 //   出错时： \u0000 哨兵（与 v1 相同）
 //
-// 显式限制（spec B2）：事件行只保证出现在第一个文本增量之前。
-// 事件行结束后进入纯文本模式，判断依据是"这一行不是合法事件 JSON"——
-// 答案以 '{' 开头的情形会被 JSON.parse 兜住（没有 citations/tool 键 → 不是事件）。
+// 为什么文本起点必须是哨兵而不能靠"JSON.parse 失败就是文本"来猜：
+// 文本增量不按行切 —— 没有换行的答案会被当成"没收全的事件行"扣在缓冲区，
+// 实测 bug：回答"你好"全程空白，刷新才显示。边界显式声明，不猜（spec B2 修订）。
 // ============================================================
 
 /** v2 第一行：只有会话 id（citations 改走事件行）。 */
@@ -172,6 +173,18 @@ export function encodeCitationsLine(citations: Citation[]): string {
 export function encodeToolLine(question: string): string {
   return `${JSON.stringify({ tool: { question } })}\n`;
 }
+
+/**
+ * 文本起始哨兵（W10 修订）：服务端在发第一个文本增量前必发一个 \u0001。
+ *
+ * 为什么必须有它（实测 bug：回答"你好"时前端全程空白，刷新才显示）：
+ * 事件行按 \n 分行，但文本增量不按行来 —— 没有换行的答案会被当成
+ * "还没收全的事件行"一直扣在 lineBuf 里，answer 永远是空。
+ * 原先靠"JSON.parse 失败就是文本"来猜边界，对没有换行的文本根本不成立。
+ * 哨兵是显式声明：事件模式里见到 \u0001 就切文本，不猜。
+ * 与 v1 的 \u0000 错误哨兵同一套路：控制字符不会出现在正常内容里。
+ */
+export const TEXT_START = '\u0001';
 
 export type StreamCursorV2 = {
   readingHeader: boolean;
@@ -242,43 +255,93 @@ export function feedV2(cursor: StreamCursorV2, text: string): boolean {
     }
   }
 
-  // ② 事件模式：逐行尝试解析事件行。事件行必须以 \n 结尾才可能完整。
+  // ② 事件模式：消费事件行，直到出现文本哨兵（\u0001）或错误哨兵（\u0000）。
+  //    事件行必须整行（\n 结尾）才消费；半行留在 buf 等下一块。
+  //    JSON.parse 失败的兜底保留（老流/异常流的容错），但正常路径靠哨兵，不靠猜。
   while (cursor.eventMode && !cursor.errorMode) {
-    const nl = buf.indexOf('\n');
-    if (nl === -1) break; // 半行，等下一块
-    const line = buf.slice(0, nl);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(line);
-    } catch {
-      // 不是事件 → 文本开始了。这一行（含它的换行）属于答案。
+    const markerAt = buf.indexOf(TEXT_START);
+    const nulAt = buf.indexOf(NUL);
+    const boundary =
+      markerAt === -1 ? nulAt : nulAt === -1 ? markerAt : Math.min(markerAt, nulAt);
+
+    // boundary 之前的完整行都可以尝试按事件消费
+    let regionEnd: number;
+    if (boundary === -1) {
+      const lastNl = buf.lastIndexOf('\n');
+      if (lastNl === -1) break; // 一个完整行都没有，等下一块
+      regionEnd = lastNl + 1;
+    } else {
+      regionEnd = boundary;
+    }
+
+    let consumed = 0;
+    let textFrom = -1; // 从这里起不是事件，是文本
+    while (consumed < regionEnd) {
+      const nl = buf.indexOf('\n', consumed);
+      if (nl === -1 || nl >= regionEnd) {
+        // 哨兵前有不成行的残片（服务端事件行总是整行，正常不该发生）→ 按文本兜底
+        textFrom = consumed;
+        break;
+      }
+      const line = buf.slice(consumed, nl);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        textFrom = consumed;
+        break;
+      }
+      if (isEvent(parsed)) {
+        if ('citations' in parsed && Array.isArray(parsed.citations)) {
+          const fresh = parsed.citations as Citation[];
+          cursor.citations.push(...fresh);
+          cursor.freshCitations = fresh;
+        } else if ('tool' in parsed) {
+          cursor.toolQuestion = (parsed.tool as { question?: string })?.question ?? null;
+        }
+        consumed = nl + 1;
+      } else {
+        // 合法 JSON 但不是事件（答案恰好以完整 JSON 开头的老兜底）→ 按文本
+        textFrom = consumed;
+        break;
+      }
+    }
+
+    if (textFrom !== -1) {
+      cursor.eventMode = false;
+      buf = buf.slice(textFrom); // 连同边界哨兵一起交给步骤 ③
+      break;
+    }
+
+    buf = buf.slice(regionEnd);
+
+    if (boundary === nulAt && nulAt !== -1) {
+      // 错误哨兵：事件阶段就失败了。buf 现在 \u0000 开头，步骤 ③ 会收进 error
+      cursor.eventMode = false;
+      cursor.errorMode = true;
+      break;
+    }
+    if (boundary === markerAt && markerAt !== -1) {
+      // 文本哨兵：之后是纯文本，buf 交给步骤 ③
       cursor.eventMode = false;
       break;
     }
-    buf = buf.slice(nl + 1);
-    if (isEvent(parsed)) {
-      if ('citations' in parsed && Array.isArray(parsed.citations)) {
-        const fresh = parsed.citations as Citation[];
-        cursor.citations.push(...fresh);
-        cursor.freshCitations = fresh;
-      } else if ('tool' in parsed) {
-        cursor.toolQuestion = (parsed.tool as { question?: string })?.question ?? null;
-      }
-    } else {
-      // 合法 JSON 但不是事件（答案恰好以完整 JSON 开头）→ 按文本处理
-      cursor.eventMode = false;
-      cursor.answer += `${line}\n`;
-    }
+    // boundary === -1：完整行消费完，残留半行已在 buf，下一轮循环 break
   }
-  if (!cursor.eventMode) cursor.lineBuf = '';
-  else {
+
+  if (cursor.eventMode) {
     cursor.lineBuf = buf; // 事件模式下残留半行暂存
     return cursor.freshCitations.length > 0;
   }
+  cursor.lineBuf = '';
 
   if (buf === '') return cursor.freshCitations.length > 0;
 
   // ③ 纯文本模式（与 v1 ② 相同：哨兵在累积层面找）
+  // 剥掉可能混进来的文本哨兵（正常路径在②已消费；兜底路径防它漏进步骤③）。
+  // 只剥首个：协议里哨兵只出现一次（服务端首 delta 前发一次）。
+  const strayMarker = buf.indexOf(TEXT_START);
+  if (strayMarker !== -1) buf = buf.slice(0, strayMarker) + buf.slice(strayMarker + 1);
   const nul = buf.indexOf(NUL);
   if (nul !== -1) {
     cursor.answer += buf.slice(0, nul);

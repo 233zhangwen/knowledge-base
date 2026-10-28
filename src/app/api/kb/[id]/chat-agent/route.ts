@@ -21,6 +21,7 @@ import {
   encodeErrorLine,
   encodeHeadLineV2,
   encodeToolLine,
+  TEXT_START,
   type Citation,
 } from '@/lib/chat-protocol';
 import {
@@ -125,6 +126,8 @@ export async function POST(
   const t0 = Date.now();
   /** 最终落库快照：与模型看到的编号账本严格同序（事件里 push，cancel 也能拿到） */
   const citations: Citation[] = [];
+  /** 文本哨兵只发一次：事件行 → \u0001 → 文本，边界显式声明不靠猜（见 TEXT_START 注释） */
+  let textStarted = false;
 
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
@@ -155,6 +158,10 @@ export async function POST(
               controller.enqueue(encoder.encode(encodeCitationsLine(event.citations)));
               break;
             case 'delta':
+              if (!textStarted) {
+                textStarted = true;
+                controller.enqueue(encoder.encode(TEXT_START));
+              }
               answer += event.text;
               controller.enqueue(encoder.encode(event.text));
               break;
