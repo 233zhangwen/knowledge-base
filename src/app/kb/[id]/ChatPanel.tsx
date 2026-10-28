@@ -20,10 +20,10 @@
 import { useEffect, useRef, useState } from 'react';
 
 import {
-  createCursor,
-  feed,
+  createCursorV2,
+  feedV2,
   type Citation,
-  type StreamCursor,
+  type StreamCursorV2,
 } from '@/lib/chat-protocol';
 
 /** 与 route.ts 里的 MAX_QUESTION_LENGTH 一致：前端先拦，省一次往返。 */
@@ -100,7 +100,9 @@ export function ChatPanel({
     setAbort(() => controller.abort.bind(controller));
 
     try {
-      const res = await fetch(`/api/kb/${kbId}/chat`, {
+      // W10 起切到 Agent 端点（方案 D-0：并存，旧 /chat 保留到 W11 验收后删）。
+      // 协议 v2：citations 从"第一行快照"变成"流中事件行"，解析器换成 feedV2。
+      const res = await fetch(`/api/kb/${kbId}/chat-agent`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: q, conversationId: activeConversationId }),
@@ -119,13 +121,13 @@ export function ChatPanel({
 
       const reader = res.body.getReader();
       const decoder = new TextDecoder();
-      const cursor: StreamCursor = createCursor();
+      const cursor: StreamCursorV2 = createCursorV2();
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        feed(cursor, decoder.decode(value, { stream: true }));
+        feedV2(cursor, decoder.decode(value, { stream: true }));
         if (cursor.conversationId && cursor.conversationId !== activeConversationId) {
           setActiveConversationId(cursor.conversationId);
           // 新会话诞生：把 id 同步进 URL。用 history.replaceState 而不是 router.replace ——
@@ -164,8 +166,8 @@ export function ChatPanel({
     }
   }
 
-  /** 把正在生成的那条 assistant 更新到最新内容 */
-  function updateStreamingSlot(cursor: StreamCursor) {
+  /** 把正在生成的那条 assistant 更新到最新内容（citations 由 feedV2 累积在 cursor 上） */
+  function updateStreamingSlot(cursor: StreamCursorV2) {
     setMessages((prev) => {
       const rest = prev.at(-1)?.id === STREAMING_ID ? prev.slice(0, -1) : prev;
       return [

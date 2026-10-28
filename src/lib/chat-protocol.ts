@@ -131,3 +131,164 @@ export function feed(cursor: StreamCursor, text: string): boolean {
 
   return justParsedHeader;
 }
+
+// ============================================================
+// 协议 v2（W10，Agent 路径专用）
+//
+// 为什么必须有 v2：v1 的 citations 是"流开始前就算好的快照"（必检索架构），
+// Agent 化后检索发生在流中间，citations 变成流中产物 —— 第一行装不下它了。
+//
+//   第一行： {"v":2,"conversationId":"..."}\n
+//   事件行： {"citations":[...]}（可多次，客户端按 chunkId 去重合并）
+//           {"tool":{"question":"..."}}（检索状态，E2 选做用）
+//   之后：   纯文本增量（与 v1 相同）
+//   出错时： \u0000 哨兵（与 v1 相同）
+//
+// 显式限制（spec B2）：事件行只保证出现在第一个文本增量之前。
+// 事件行结束后进入纯文本模式，判断依据是"这一行不是合法事件 JSON"——
+// 答案以 '{' 开头的情形会被 JSON.parse 兜住（没有 citations/tool 键 → 不是事件）。
+// ============================================================
+
+/** v2 第一行：只有会话 id（citations 改走事件行）。 */
+export type StreamHeadV2 = {
+  v: 2;
+  conversationId: string | null;
+};
+
+/** v2 事件行（联合判别：有 citations 键是引用事件，有 tool 键是状态事件）。 */
+export type StreamEvent =
+  | { citations: Citation[] }
+  | { tool: { question: string } };
+
+export function encodeHeadLineV2(conversationId: string): string {
+  const head: StreamHeadV2 = { v: 2, conversationId };
+  return `${JSON.stringify(head)}\n`;
+}
+
+export function encodeCitationsLine(citations: Citation[]): string {
+  return `${JSON.stringify({ citations })}\n`;
+}
+
+export function encodeToolLine(question: string): string {
+  return `${JSON.stringify({ tool: { question } })}\n`;
+}
+
+export type StreamCursorV2 = {
+  readingHeader: boolean;
+  /** 半行暂存：头部行、事件行都可能被 TCP 切开（同 v1 headerBuf 的教训） */
+  lineBuf: string;
+  /**
+   * 是否还在事件模式：事件行只出现在文本前（spec B2 的显式约束）。
+   * 第一行解析失败（答案以 '{' 开头等）就退出事件模式，之后全部按文本处理。
+   */
+  eventMode: boolean;
+  errorMode: boolean;
+  citations: Citation[];
+  conversationId: string | null;
+  /** 最近一次事件新带来的引用（调用方据此 setState；空数组 = 无新引用） */
+  freshCitations: Citation[];
+  /** 最近一次工具事件的问题文本（E2 状态提示用；null = 清除） */
+  toolQuestion: string | null;
+  answer: string;
+  error: string;
+};
+
+export function createCursorV2(): StreamCursorV2 {
+  return {
+    readingHeader: true,
+    lineBuf: '',
+    eventMode: true,
+    errorMode: false,
+    citations: [],
+    conversationId: null,
+    freshCitations: [],
+    toolQuestion: null,
+    answer: '',
+    error: '',
+  };
+}
+
+function isEvent(obj: unknown): obj is StreamEvent {
+  if (obj === null || typeof obj !== 'object') return false;
+  return 'citations' in obj || 'tool' in obj;
+}
+
+/**
+ * v2 版 feed。返回值语义与 v1 不同：返回 true 表示**这一次**解析出了新引用
+ * （cursor.freshCitations 非空），调用方据此更新引用区。
+ */
+export function feedV2(cursor: StreamCursorV2, text: string): boolean {
+  let buf = cursor.lineBuf + text;
+  cursor.freshCitations = [];
+
+  // ① 头部行（v2 结构与 v1 同构，只是字段不同）
+  if (cursor.readingHeader) {
+    const nl = buf.indexOf('\n');
+    if (nl === -1) {
+      cursor.lineBuf = buf;
+      return false;
+    }
+    const head = buf.slice(0, nl);
+    buf = buf.slice(nl + 1);
+    cursor.lineBuf = '';
+    cursor.readingHeader = false;
+    try {
+      const parsed = JSON.parse(head) as Partial<StreamHeadV2>;
+      // v != 2 说明连错了端点/版本，当协议错误处理（答案照常显示，引用置空）
+      cursor.conversationId = parsed.v === 2 ? (parsed.conversationId ?? null) : null;
+    } catch {
+      cursor.conversationId = null;
+      cursor.eventMode = false;
+    }
+  }
+
+  // ② 事件模式：逐行尝试解析事件行。事件行必须以 \n 结尾才可能完整。
+  while (cursor.eventMode && !cursor.errorMode) {
+    const nl = buf.indexOf('\n');
+    if (nl === -1) break; // 半行，等下一块
+    const line = buf.slice(0, nl);
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(line);
+    } catch {
+      // 不是事件 → 文本开始了。这一行（含它的换行）属于答案。
+      cursor.eventMode = false;
+      break;
+    }
+    buf = buf.slice(nl + 1);
+    if (isEvent(parsed)) {
+      if ('citations' in parsed && Array.isArray(parsed.citations)) {
+        const fresh = parsed.citations as Citation[];
+        cursor.citations.push(...fresh);
+        cursor.freshCitations = fresh;
+      } else if ('tool' in parsed) {
+        cursor.toolQuestion = (parsed.tool as { question?: string })?.question ?? null;
+      }
+    } else {
+      // 合法 JSON 但不是事件（答案恰好以完整 JSON 开头）→ 按文本处理
+      cursor.eventMode = false;
+      cursor.answer += `${line}\n`;
+    }
+  }
+  if (!cursor.eventMode) cursor.lineBuf = '';
+  else {
+    cursor.lineBuf = buf; // 事件模式下残留半行暂存
+    return cursor.freshCitations.length > 0;
+  }
+
+  if (buf === '') return cursor.freshCitations.length > 0;
+
+  // ③ 纯文本模式（与 v1 ② 相同：哨兵在累积层面找）
+  const nul = buf.indexOf(NUL);
+  if (nul !== -1) {
+    cursor.answer += buf.slice(0, nul);
+    cursor.error += buf.slice(nul + 1);
+    cursor.errorMode = true;
+  } else if (cursor.errorMode) {
+    cursor.error += buf;
+  } else {
+    cursor.answer += buf;
+  }
+
+  return cursor.freshCitations.length > 0;
+}
