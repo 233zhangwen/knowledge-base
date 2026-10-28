@@ -11,9 +11,11 @@
     "verify:rag": "node --experimental-transform-types scripts/verify-rag-e2e.mts"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^4.0.104",
     "@auth/prisma-adapter": "^2.11.3",
     "@prisma/adapter-pg": "^7.10.1",
     "@prisma/client": "^7.10.1",
+    "ai": "^7.0.155",
     "next": "16.4.2",
     "next-auth": "^5.0.0-beta.32",
     "react": "19.3.0",

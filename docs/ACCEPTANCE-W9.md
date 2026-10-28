@@ -92,8 +92,68 @@ Agent 化的第一步是把"检索"从硬编码步骤变成**模型的工具**�
 
 ## 观测记录
 
-（执行后追加：探针原始输出摘要、A/B 组结果、D 组反证记录、C1 选型结论）
+### A 组 · 原生探针（2026-10-28 实测）
+
+| case | 结果 | 关键数据 |
+|---|---|---|
+| A1 | PASS | finish_reason=stop，tool_calls=0，934ms |
+| A2 ×2 | PASS | 两次均触发 retrieve_knowledge(question 含"年假")，参数逐字节一致；522/667ms |
+| A3 ×2 | PASS | 答案含"17 天"；注意出现 markdown 粗体（**17 天**）——工具路径绕过了现有 prompt 的禁 markdown 规则 |
+| A4 | PASS | thinking disabled 与 tool calling 共存，无需任何 hack |
+
+**结论：核心疑问有了答案——推理模型 + 工具调用 + thinking disabled 三者可以共存。**
+
+### D 组 · 反证（用户手跑，2026-10-28）
+
+- **D1**（删掉 tools 重跑 A2）：finish_reason=stop、tool_calls=0。模型**没有编造**，
+  诚实回答"无法直接给出确切答案，因为这个名称可能对应多家不同公司"，
+  并给出一般性判断依据。→ 反证成立：A2 触发工具是因为工具存在且描述生效。
+  附带观察：无 system prompt 时模型 markdown 全开（### 标题 / **加粗** / 书名号），
+  且 completion=497 token、2625ms（全程最长）——没工具时模型话痨，工具路径反而省 token。
+- **D2**（去掉 thinking 重跑 A2）：工具仍触发，但响应出现 reasoning_content（129 字），
+  completion 49→78。→ **接线周继续保留 thinking disabled**（关思考是省钱的，不是摆设）。
+
+### B 组 · AI SDK 原型（2026-10-28 实测，ai@7.0.155 + @ai-sdk/openai@4.0.104）
+
+- **B1 依赖就位**：ai@7.0.155 + @ai-sdk/openai@4.0.104 进入 package.json（用户终端安装）。
+- **B2 case 复现**：`generateText` + `tool()` + `stopWhen: stepCountIs(5)`：
+  - B1 无关问题：toolCalls=0，PASS；
+  - B2 多步（A2+A3 合体）：steps=2，工具自动执行（execute 回调真正跑了一次），
+    续答含"17 天"，PASS。
+- **B3 差异记录**（原生 vs AI SDK，≥3 条）：
+  1. **tool_calls 解析与多步循环**：原生要手摸 `choices[0].message.tool_calls`、
+     手写"把结果 append 回 messages 再发一轮"的状态机；AI SDK 把整条 loop 包掉
+     （execute 自动执行、结果自动回传、steps 聚合），B2 一个 `generateText` 调用完成两轮。
+  2. **thinking 透传**：原生直接放请求体；AI SDK 的 providerOptions 是严格 zod schema
+     （`@ai-sdk/openai@4` 的 openaiLanguageModelChatOptions，未知键被剥），
+     DeepSeek 私有参数唯一通道是 `createOpenAI` 的自定义 `fetch` 中间件
+     （spike 里 `INJECT`：解析 body → 注入 `thinking` → 重新序列化）。
+  3. **请求体体积**：A1 prompt=321 vs B1 prompt=345——SDK 包装多 ~24 token（可忽略）。
+  4. **token 口径改名**：`usage.prompt_tokens/completion_tokens` → `usage.inputTokens/outputTokens`。
+  5. **工具定义**：手写 JSON Schema → `tool({ description, inputSchema: jsonSchema(…) })`，
+     `execute` 与定义同居一处。
+- **两条横跨 A/B 的观察**（不是 SDK 差异，是模型行为）：
+  1. **markdown 泄漏是模型层面的**：AI SDK 路径的续答同样出现 `**17 天**` ——
+     禁 markdown 规则必须进 Agent 的 system prompt，与传输层无关；
+  2. **无 system prompt 时模型自称 Claude**（B1 原话"我是 Claude，Anthropic 开发的 AI 助手"）——
+     模型自报身份不可信，也再次说明接线周 system prompt 必须自带身份声明。
+
+### C1 · 选型结论：**AI SDK tools**
+
+| 维度 | AI SDK tools | LangGraph.js |
+|---|---|---|
+| 抽象成本 | 多步循环/工具执行/结果回传 SDK 全包（B2 实证） | 需先学 graph/node/edge/state 心智模型，为单工具编排引入整套概念 |
+| 与现有 SSE 链路兼容 | `streamText` 的 fullStream 有 tool-call/tool-result 事件，前端展示"正在检索"更容易；现有 route.ts 可渐进替换 | 输出是自己的流协议，接回 Next.js SSE 要再包一层 |
+| 错误恢复 | 内置 `maxRetries`、`onStepError`，工具异常被捕获为 tool-error 不炸整条流 | 能力更强（checkpoint/时间旅行），但对单工具场景过度设计 |
+| 附加收益 | M3 课程要求的官方关键词；provider 可切换靠 `createOpenAI({ baseURL })`，与项目 #1 的抽象一致 | 简历加分但面试要能讲清图模型，学习成本挤占投递期 |
+
+**决定：项目 2 用 AI SDK（ai@7 + @ai-sdk/openai@4 指向 DeepSeek baseURL）。**
+保留原生探针脚本作为"SDK 失灵时的对照组"——如果未来遇到 SDK 剥参数之类的坑，
+probe-tools.mjs 就是降级路径的可行性证明。
 
 ## 修订记录
 
 - V1（2026-10-28）：初版。
+- V2（2026-10-28）：B2 由"复现三条 case"合并为两条（A2+A3 合成多步 B2——
+  AI SDK 的多步循环本来就是它的主卖点，拆开复现反而测不到 loop）；
+  观测记录回填 + C1 选型结论（AI SDK）。
