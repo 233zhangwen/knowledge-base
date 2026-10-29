@@ -115,8 +115,13 @@ export function ConversationSidebar({
               ) : null}
             </div>
 
-            {/* lg 及以上：竖列常开，和浮层是同一套条目渲染 */}
-            <ConversationGroups kbId={kbId} conversations={conversations} activeId={activeId} />
+            {/* lg 及以上：竖列常开，和浮层是同一套条目渲染。
+                ⚠️ 必须 hidden lg:block：不包的话窄屏下这份列表会和浮层
+                同时渲染（外层窄屏是 flex-row，它被排到按钮右边），
+                用户看到"历史列表出现两份"（2026-10-29 实测截图踩坑）。 */}
+            <div className="hidden w-full lg:block">
+              <ConversationGroups kbId={kbId} conversations={conversations} activeId={activeId} />
+            </div>
           </>
         )}
       </div>
