@@ -71,12 +71,17 @@ export default async function KnowledgeBaseDetailPage({
    * 用它做分组就已经解决了"数据量无限增长"，不需要再套一层滚动分页。
    */
   const conversations = await listConversations(userId, kb.id);
-  const sidebarItems: SidebarItem[] = conversations.map((c) => ({
-    id: c.id,
-    title: c.title,
-    messageCount: c._count.messages,
-    updatedAtText: SHORT_DATE_FORMATTER.format(c.updatedAt),
-  }));
+  const now = new Date();
+  const sidebarItems: SidebarItem[] = conversations.map((c) => {
+    const { timeText, group } = conversationTimeParts(c.updatedAt, now);
+    return {
+      id: c.id,
+      title: c.title,
+      messageCount: c._count.messages,
+      timeText,
+      group,
+    };
+  });
 
   /**
    * 选中的会话：从 URL 的 ?c= 来。
@@ -248,10 +253,28 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
   timeStyle: 'short',
 });
 
-/** 侧栏空间小，只显示日期；同样必须在服务端格式化，避免 hydration 不一致 */
-const SHORT_DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
-  dateStyle: 'short',
-});
+/**
+ * 会话侧栏的相对时间 + 分组标签（2026-10-29 A+C 改版）。
+ *
+ * 必须在服务端算成字符串再传下去：客户端组件里 new Date() 对比"现在"
+ * 会在服务端 HTML 和客户端首渲染之间产生 hydration 警告（两边时钟不同），
+ * 和当年 updatedAtText 服务端格式化是同一个理由。
+ *
+ * group 和 timeText 用同一个值：今天/昨天天然唯一，更早的天用"M 月 D 日"
+ * 当分组头也唯一 —— 分组直接按标签合并即可，不需要额外 id。
+ */
+function conversationTimeParts(updatedAt: Date, now: Date): { timeText: string; group: string } {
+  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(now) - startOfDay(updatedAt)) / 86_400_000);
+
+  if (diffDays <= 0) return { timeText: '今天', group: '今天' };
+  if (diffDays === 1) return { timeText: '昨天', group: '昨天' };
+
+  const md = `${updatedAt.getMonth() + 1} 月 ${updatedAt.getDate()} 日`;
+  if (updatedAt.getFullYear() === now.getFullYear()) return { timeText: md, group: md };
+  const full = `${updatedAt.getFullYear()} 年 ${md}`;
+  return { timeText: full, group: full };
+}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

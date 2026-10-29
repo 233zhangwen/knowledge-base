@@ -11,6 +11,12 @@
  * 为什么交给 Server Component 重渲染而不是前端再拉一次消息：
  *   页面本来就要查会话列表，顺带把选中会话的消息一起查出来，一次往返拿完。
  *   前端再 fetch 一次消息 = 多一个请求、多一段 loading 状态，什么也没换到。
+ *
+ * 视觉演进史：
+ *   横向 chip（截断/无滑动暗示/选中态弱）→ details 折叠 → 浮层抽屉（2026-10-27）
+ *   → 边框卡片（每条一个 border，视觉噪音大、红色"删除"悬浮在外）
+ *   → 2026-10-29 A+C 混合：无边框列表 + 时间分组头（今天/昨天/…），
+ *     删除改垃圾桶图标悬停浮现，红色只在确认那一步出现。
  */
 import Link from 'next/link';
 import { useEffect, useRef, useState } from 'react';
@@ -22,8 +28,10 @@ export type SidebarItem = {
   id: string;
   title: string | null;
   messageCount: number;
-  /** 服务端格式化好的时间字符串：避免客户端服务器时区不一致引起 hydration 警告 */
-  updatedAtText: string;
+  /** 相对时间（今天/昨天/M 月 D 日/…），服务端算好 —— 避免 hydration 时钟差 */
+  timeText: string;
+  /** 分组头标签，与 timeText 同源（同一天必同标签），服务端排序后相邻必同组 */
+  group: string;
 };
 
 export function ConversationSidebar({
@@ -70,14 +78,8 @@ export function ConversationSidebar({
 
   return (
     /**
-     * 响应式（2026-10-27 三次改版，方案 C：浮层抽屉）：
-     *   窄屏  → "历史会话（N）"按钮点开一个悬浮面板，盖在聊天区上方；
-     *   lg 起 → 维持 224px 竖列常开。
-     *
-     * 演进史：横向滚动 chip（截断/无滑动暗示/选中态弱）→ details 折叠列表
-     * （零 JS，但展开会把聊天区整个往下推）→ 浮层（不推挤内容）。
-     * 浮层的代价是要自己管开合、点外部关闭和 Esc —— 见上面的 effect，
-     * 这是在为"不推挤内容"付的三笔账，没有白来的浮层。
+     * 响应式：窄屏 → "历史会话（N）"按钮点开悬浮面板；lg 起 → 224px 竖列常开。
+     * 两个形态共用 ConversationGroups 的分组渲染，改一处两边同步。
      */
     <aside className="flex w-full shrink-0 flex-col gap-2 lg:w-56">
       <div className="flex flex-row items-start gap-2 lg:flex-col">
@@ -102,28 +104,19 @@ export function ConversationSidebar({
               </button>
 
               {panelOpen ? (
-                <div className="absolute left-0 top-full z-20 mt-1 w-[280px] max-w-[calc(100vw-3rem)] rounded-lg border border-zinc-200 bg-white p-1">
-                  <ul className="flex max-h-[288px] flex-col gap-1 overflow-y-auto">
-                    {conversations.map((c) => (
-                      <ConversationLink
-                        key={c.id}
-                        kbId={kbId}
-                        item={c}
-                        active={c.id === activeId}
-                        onNavigate={() => setPanelOpen(false)}
-                      />
-                    ))}
-                  </ul>
+                <div className="absolute left-0 top-full z-20 mt-1 max-h-[288px] w-[280px] max-w-[calc(100vw-3rem)] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1">
+                  <ConversationGroups
+                    kbId={kbId}
+                    conversations={conversations}
+                    activeId={activeId}
+                    onNavigate={() => setPanelOpen(false)}
+                  />
                 </div>
               ) : null}
             </div>
 
             {/* lg 及以上：竖列常开，和浮层是同一套条目渲染 */}
-            <ul className="hidden flex-col gap-1 lg:flex">
-              {conversations.map((c) => (
-                <ConversationLink key={c.id} kbId={kbId} item={c} active={c.id === activeId} />
-              ))}
-            </ul>
+            <ConversationGroups kbId={kbId} conversations={conversations} activeId={activeId} />
           </>
         )}
       </div>
@@ -132,11 +125,66 @@ export function ConversationSidebar({
 }
 
 /**
- * 单条会话 = 「打开」+「删除」两个动作并排。
+ * 按天分组的会话列表（A+C 混合的时间分组部分）。
  *
- * 为什么不再让整条是一个 Link：删除按钮不能嵌在 <a> 里（嵌套可交互元素
- * 是非法 HTML，hydration 也会出问题），所以拆成 Link（flex-1 占满）+ 按钮。
- * 之前 chip 版的 max-w-[240px] 删掉了：竖列里条目就是全宽，截断交给 truncate。
+ * 服务端已按 updatedAt 倒序返回 → 同一天必然相邻，按 group 标签顺序合并即可。
+ * 用 Map 而不是"和上一条比较"：万一将来排序键变化，Map 按插入序也能正确归组。
+ */
+function ConversationGroups({
+  kbId,
+  conversations,
+  activeId,
+  onNavigate,
+}: {
+  kbId: string;
+  conversations: SidebarItem[];
+  activeId: string | null;
+  onNavigate?: () => void;
+}) {
+  const groups = new Map<string, SidebarItem[]>();
+  for (const c of conversations) {
+    const bucket = groups.get(c.group);
+    if (bucket) bucket.push(c);
+    else groups.set(c.group, [c]);
+  }
+
+  /* 滚动不在这里：浮层整体（max-h）或 lg 竖列（不限制）负责，内层列表只管排版 */
+  const listClass = 'm-0 flex list-none flex-col gap-0.5 p-0';
+
+  return (
+    <ul className="m-0 list-none p-0">
+      {[...groups.entries()].map(([label, items], gi) => (
+        <li key={label}>
+          {/* 分组头：第一个组不额外留上边距（面板/竖列的顶部本来就贴着按钮） */}
+          <p className={`px-2 pb-1 text-[11px] text-zinc-400 ${gi === 0 ? 'pt-1' : 'pt-3'}`}>
+            {label}
+          </p>
+          <ul className={listClass}>
+            {items.map((c) => (
+              <ConversationLink
+                key={c.id}
+                kbId={kbId}
+                item={c}
+                active={c.id === activeId}
+                onNavigate={onNavigate}
+              />
+            ))}
+          </ul>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/**
+ * 单条会话 = 「打开」+「删除」两个动作。
+ *
+ * 2026-10-29 去边框改版：
+ *   · 选中 = 灰底（bg-zinc-100），悬停 = 浅灰（hover:bg-zinc-50），不再靠边框；
+ *   · 删除按钮绝对定位在行右侧，桌面悬停才浮现（group-hover/row），
+ *     触屏没有 hover → pointer:coarse 媒体查询常显；
+ *     两步确认（灰图标 → 红色"确认/取消"）仍在按钮组件内部。
+ *   · Link 右侧留 pr-7：图标浮现时压不着标题。
  *
  * onNavigate：浮层里点完一条要收起面板 —— Link 导航是 RSC 重渲染，
  * 组件实例不会卸载，useState 会活着，不主动关面板就会一直开着挡视线。
@@ -153,18 +201,18 @@ function ConversationLink({
   onNavigate?: () => void;
 }) {
   return (
-    <li className="flex w-full items-start gap-1">
+    <li className="group/row relative w-full">
       <Link
         href={`/kb/${kbId}?c=${item.id}`}
         onClick={onNavigate}
-        className={`block min-w-0 flex-1 rounded-lg border px-3 py-2 text-xs ${
-          active ? 'border-zinc-400 bg-zinc-100' : 'hover:bg-zinc-50'
+        className={`block min-w-0 flex-1 rounded-lg py-1.5 pl-2.5 pr-7 text-xs ${
+          active ? 'bg-zinc-100' : 'hover:bg-zinc-50'
         }`}
       >
         {/* title 理论上不会为空（建会话时就写了），但仍要兜住 —— 直接渲染 null 会白屏一格 */}
         <p className="truncate font-medium">{item.title ?? '未命名会话'}</p>
         <p className="mt-0.5 whitespace-nowrap text-zinc-400">
-          {item.messageCount} 条 · {item.updatedAtText}
+          {item.messageCount} 条 · {item.timeText}
         </p>
       </Link>
 
