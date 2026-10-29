@@ -12,13 +12,14 @@
  *   页面本来就要查会话列表，顺带把选中会话的消息一起查出来，一次往返拿完。
  *   前端再 fetch 一次消息 = 多一个请求、多一段 loading 状态，什么也没换到。
  *
- * 视觉/交互演进史：
- *   横向 chip（截断/无滑动暗示/选中态弱）→ details 折叠（推聊天区）→
- *   浮层抽屉（2026-10-27，不推挤但多一次点击）→ 边框卡片 →
- *   2026-10-29 A+C 混合 + 去浮层：无边框分组列表直接常显（窄屏限高滚动），
- *   点开即见，不再为"省那点空间"多一次交互 —— 用户实测浮层没必要。
+ * 视觉演进史：
+ *   横向 chip（截断/无滑动暗示/选中态弱）→ details 折叠 → 浮层抽屉（2026-10-27）
+ *   → 边框卡片（每条一个 border，视觉噪音大、红色"删除"悬浮在外）
+ *   → 2026-10-29 A+C 混合：无边框列表 + 时间分组头（今天/昨天/…），
+ *     删除改垃圾桶图标悬停浮现，红色只在确认那一步出现。
  */
 import Link from 'next/link';
+import { useEffect, useRef, useState } from 'react';
 
 import { DeleteConversationButton } from './DeleteConversationButton';
 import { NewConversationButton } from './NewConversationButton';
@@ -42,25 +43,83 @@ export function ConversationSidebar({
   conversations: SidebarItem[];
   activeId: string | null;
 }) {
+  /**
+   * 窄屏浮层（2026-10-27 方案 C）的开合态。
+   * 只在窄屏渲染的那半边用到；lg 竖列是纯静态标记，不吃这个状态。
+   */
+  const [panelOpen, setPanelOpen] = useState(false);
+  /** 点外部关闭：需要拿到"浮层 + 按钮"这整块区域的 DOM 引用 */
+  const panelRootRef = useRef<HTMLDivElement>(null);
+
+  /**
+   * 点外部关闭 + Esc 关闭。
+   * 用 pointerdown 而不是 click：按下那一刻就判定，避免"点别的按钮先触发
+   * 关闭又触发那个按钮的行为"这类时序坑。open 时才挂监听，省空转。
+   */
+  useEffect(() => {
+    if (!panelOpen) return;
+
+    function onPointerDown(e: PointerEvent) {
+      if (panelRootRef.current && !panelRootRef.current.contains(e.target as Node)) {
+        setPanelOpen(false);
+      }
+    }
+    function onKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') setPanelOpen(false);
+    }
+
+    document.addEventListener('pointerdown', onPointerDown);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [panelOpen]);
+
   return (
+    /**
+     * 响应式：窄屏 → "历史会话（N）"按钮点开悬浮面板；lg 起 → 224px 竖列常开。
+     * 两个形态共用 ConversationGroups 的分组渲染，改一处两边同步。
+     */
     <aside className="flex w-full shrink-0 flex-col gap-2 lg:w-56">
-      <NewConversationButton kbId={kbId} active={activeId === null} />
+      <div className="flex flex-row items-start gap-2 lg:flex-col">
+        {/* 必须是按钮不是 Link：见 NewConversationButton.tsx 顶部的 bug 复盘 */}
+        <NewConversationButton kbId={kbId} active={activeId === null} />
 
-      {conversations.length === 0 ? (
-        <p className="px-1 py-2 text-xs text-zinc-400">还没有会话。问一句就有了。</p>
-      ) : (
-        <>
-          {/* 窄屏：列表直接常显，限高滚动（避免长列表把聊天区推没）；lg 隐藏 */}
-          <div className="max-h-[288px] overflow-y-auto lg:hidden">
-            <ConversationGroups kbId={kbId} conversations={conversations} activeId={activeId} />
-          </div>
+        {conversations.length === 0 ? (
+          <p className="px-1 py-2 text-xs text-zinc-400">还没有会话。问一句就有了。</p>
+        ) : (
+          <>
+            {/* 窄屏：按钮 + 悬浮面板。relative 挂在这一小块上，面板以它为锚 */}
+            <div ref={panelRootRef} className="relative min-w-0 flex-1 lg:hidden">
+              <button
+                type="button"
+                onClick={() => setPanelOpen((v) => !v)}
+                aria-expanded={panelOpen}
+                className={`whitespace-nowrap rounded-lg border px-3 py-2 text-sm ${
+                  panelOpen ? 'border-zinc-400 bg-zinc-100' : 'hover:bg-zinc-50'
+                }`}
+              >
+                历史会话（{conversations.length}）
+              </button>
 
-          {/* lg 及以上：竖列常开，和窄屏是同一套条目渲染 */}
-          <div className="hidden lg:block">
+              {panelOpen ? (
+                <div className="absolute left-0 top-full z-20 mt-1 max-h-[288px] w-[280px] max-w-[calc(100vw-3rem)] overflow-y-auto rounded-lg border border-zinc-200 bg-white p-1">
+                  <ConversationGroups
+                    kbId={kbId}
+                    conversations={conversations}
+                    activeId={activeId}
+                    onNavigate={() => setPanelOpen(false)}
+                  />
+                </div>
+              ) : null}
+            </div>
+
+            {/* lg 及以上：竖列常开，和浮层是同一套条目渲染 */}
             <ConversationGroups kbId={kbId} conversations={conversations} activeId={activeId} />
-          </div>
-        </>
-      )}
+          </>
+        )}
+      </div>
     </aside>
   );
 }
@@ -75,10 +134,12 @@ function ConversationGroups({
   kbId,
   conversations,
   activeId,
+  onNavigate,
 }: {
   kbId: string;
   conversations: SidebarItem[];
   activeId: string | null;
+  onNavigate?: () => void;
 }) {
   const groups = new Map<string, SidebarItem[]>();
   for (const c of conversations) {
@@ -87,21 +148,25 @@ function ConversationGroups({
     else groups.set(c.group, [c]);
   }
 
+  /* 滚动不在这里：浮层整体（max-h）或 lg 竖列（不限制）负责，内层列表只管排版 */
+  const listClass = 'm-0 flex list-none flex-col gap-0.5 p-0';
+
   return (
     <ul className="m-0 list-none p-0">
       {[...groups.entries()].map(([label, items], gi) => (
         <li key={label}>
-          {/* 分组头：第一个组不额外留上边距（列表顶部本来就贴着按钮） */}
+          {/* 分组头：第一个组不额外留上边距（面板/竖列的顶部本来就贴着按钮） */}
           <p className={`px-2 pb-1 text-[11px] text-zinc-400 ${gi === 0 ? 'pt-1' : 'pt-3'}`}>
             {label}
           </p>
-          <ul className="m-0 flex list-none flex-col gap-0.5 p-0">
+          <ul className={listClass}>
             {items.map((c) => (
               <ConversationLink
                 key={c.id}
                 kbId={kbId}
                 item={c}
                 active={c.id === activeId}
+                onNavigate={onNavigate}
               />
             ))}
           </ul>
@@ -120,20 +185,26 @@ function ConversationGroups({
  *     触屏没有 hover → pointer:coarse 媒体查询常显；
  *     两步确认（灰图标 → 红色"确认/取消"）仍在按钮组件内部。
  *   · Link 右侧留 pr-7：图标浮现时压不着标题。
+ *
+ * onNavigate：浮层里点完一条要收起面板 —— Link 导航是 RSC 重渲染，
+ * 组件实例不会卸载，useState 会活着，不主动关面板就会一直开着挡视线。
  */
 function ConversationLink({
   kbId,
   item,
   active,
+  onNavigate,
 }: {
   kbId: string;
   item: SidebarItem;
   active: boolean;
+  onNavigate?: () => void;
 }) {
   return (
     <li className="group/row relative w-full">
       <Link
         href={`/kb/${kbId}?c=${item.id}`}
+        onClick={onNavigate}
         className={`block min-w-0 flex-1 rounded-lg py-1.5 pl-2.5 pr-7 text-xs ${
           active ? 'bg-zinc-100' : 'hover:bg-zinc-50'
         }`}
@@ -145,7 +216,7 @@ function ConversationLink({
         </p>
       </Link>
 
-      {/* 删除入口；两步确认在按钮组件内部 */}
+      {/* 删除入口：浮层和 lg 竖列都有；两步确认在按钮组件内部 */}
       <DeleteConversationButton id={item.id} kbId={kbId} active={active} />
     </li>
   );
