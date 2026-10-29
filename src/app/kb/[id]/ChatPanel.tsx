@@ -61,6 +61,11 @@ export function ChatPanel({
     conversationId,
   );
   const [abort, setAbort] = useState<(() => void) | null>(null);
+  /**
+   * E2 检索状态提示（W11）：v2 协议的 tool 事件带来的改写问句。
+   * 只在"占位气泡还没有文本"时显示 —— 文本一到就让位，答案才是主角。
+   */
+  const [toolHint, setToolHint] = useState<string | null>(null);
 
   /**
    * 滚动跟随（2026-10-27 改版）：
@@ -88,6 +93,7 @@ export function ChatPanel({
     setQuestion('');
     setError(null);
     setIsStreaming(true);
+    setToolHint(null); // 上一轮的提示不许泄漏进这一轮
 
     // 乐观追加：用户立刻看到自己问了什么，不用等服务端回轮子
     setMessages((prev) => [
@@ -128,6 +134,8 @@ export function ChatPanel({
         if (done) break;
 
         feedV2(cursor, decoder.decode(value, { stream: true }));
+        // E2：tool 事件更新提示；文本到达后渲染条件自然让它消失，这里只管同步值
+        setToolHint(cursor.toolQuestion);
         if (cursor.conversationId && cursor.conversationId !== activeConversationId) {
           setActiveConversationId(cursor.conversationId);
           // 新会话诞生：把 id 同步进 URL。用 history.replaceState 而不是 router.replace ——
@@ -232,6 +240,7 @@ export function ChatPanel({
             key={m.id}
             message={m}
             streaming={m.id === STREAMING_ID}
+            toolHint={toolHint}
             /**
              * spec D5：一条 user 消息后面没有 assistant，说明当时生成失败或中断了。
              * 必须先把它说清楚 —— 否则用户隔天回来看到一句孤零零的提问，
@@ -311,10 +320,12 @@ function MessageView({
   message,
   streaming,
   orphan,
+  toolHint,
 }: {
   message: UiMessage;
   streaming: boolean;
   orphan: boolean;
+  toolHint: string | null;
 }) {
   const isUser = message.role === 'user';
 
@@ -333,13 +344,23 @@ function MessageView({
               : 'rounded-2xl rounded-bl-sm bg-zinc-50 px-4 py-3'
           }
         >
-          {/* pre-wrap：模型输出里的换行要原样呈现，否则段落糊成一团 */}
-          <p className="whitespace-pre-wrap text-sm leading-7">
-            {message.content}
-            {/* 光标只在正在生成的那条末尾；历史消息一律不多一个字符 ——
-                打字机重放属于 Out of Scope，历史就是静态文本 */}
-            {streaming ? <span className="text-zinc-400">▌</span> : null}
-          </p>
+          {/* E2：检索中（收到 tool 事件、答案未开始）先亮提示。
+              两个消失条件任一即隐：文本开始（答案才是主角）/ 流结束（finalize 后
+              streaming=false，错误路径 dropStreamingSlot 同理），不会残留。
+              高度变化会被滚动跟随自然处理 —— 提示本身在视口内。 */}
+          {streaming && toolHint && !message.content ? (
+            <p className="animate-pulse text-xs text-zinc-500">
+              正在检索：{toolHint}
+            </p>
+          ) : (
+            /* pre-wrap：模型输出里的换行要原样呈现，否则段落糊成一团 */
+            <p className="whitespace-pre-wrap text-sm leading-7">
+              {message.content}
+              {/* 光标只在正在生成的那条末尾；历史消息一律不多一个字符 ——
+                  打字机重放属于 Out of Scope，历史就是静态文本 */}
+              {streaming ? <span className="text-zinc-400">▌</span> : null}
+            </p>
+          )}
           {message.finishReason === 'stopped' ? (
             <p className={`mt-2 text-xs ${isUser ? 'text-zinc-400' : 'text-zinc-500'}`}>
               已停止生成（内容可能不完整）

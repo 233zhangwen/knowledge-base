@@ -1,6 +1,6 @@
 # knowledge-base
 
-个人知识库问答（RAG）应用：上传文档 → 解析切片 → 向量化入库 → 基于检索的流式问答，回答带引用溯源，可回溯任意历史会话。
+个人知识库问答应用：上传文档 → 解析切片 → 向量化入库 → **Agent 化问答**——由模型决定何时检索（闲聊零检索）、把模糊问题改写成检索问句、需要时多步调用工具，回答带引用溯源，可回溯任意历史会话。
 
 **线上演示**：https://afei-knowledge-base.netlify.app （GitHub 账号登录即可试用）
 **部署与运维手册**：[`docs/DEPLOY.md`](docs/DEPLOY.md) ｜ **评测记录**：[`eval/RESULTS.md`](eval/RESULTS.md)
@@ -14,7 +14,8 @@
 - **用户系统**：GitHub OAuth 登录，数据按用户隔离；`proxy.ts`（Next 16 起 middleware 更名）做路由保护
 - **知识库管理**：多知识库 CRUD，创建 / 重命名 / 删除
 - **文档上传与解析**：PDF / Markdown / TXT，单文件 ≤ 4MB；解析 → 切片 → 嵌入的异步状态机（pending → processing → ready / failed），失败原因可见，可一键重建索引
-- **RAG 问答**：pgvector 余弦检索 TOP_K=5 → DeepSeek 流式生成，首字约 0.6s；答案标注引用来源，点开可见**当时**真正喂给模型的片段全文
+- **Agent 化问答**（W10 起）：检索作为**工具**交给模型——它自己决定查不查（闲聊零 embedding 开销）、把指代不清的问题改写成独立检索问句（"那病假呢" → 完整问句）、必要时多步检索（评测集中观察到自发二次检索）；工具失败时自发重试并体面收场（说明原因、拒绝凭记忆编造）
+- **流式与引用溯源**：答案流式输出，检索完成即推送引用事件；答案标注引用来源，点开可见**当时**真正喂给模型的片段全文；引用编号跨多步全局一致
 - **会话历史**：多会话分组，URL 携带会话 id（刷新 / 后退 / 分享链接均不丢）；支持删除（消息级联清理）
 - **可运维**：`/api/health` 健康检查（DB 连通 + 版本 + 延迟）、全局错误边界、部署验收清单与故障档案
 
@@ -46,7 +47,7 @@ flowchart LR
         Proxy["proxy.ts<br/>Edge：jwt 会话校验 + 路由保护"]
         RSC["Server Components<br/>列表 / 详情 / 历史装载"]
         SA["Server Actions<br/>上传 / 建库 / 删除"]
-        Chat["POST /api/kb/[id]/chat<br/>SSE 流式响应"]
+        Chat["POST /api/kb/[id]/chat-agent<br/>Agent 工具循环 + 流协议 v2"]
         Pipeline["解析 → 切片 → 嵌入<br/>（index-document.ts）"]
         Health["GET /api/health"]
     end
@@ -68,7 +69,7 @@ flowchart LR
     Chat --> LLM
 ```
 
-**一条问答的完整路径**：问题 → 嵌入成向量 → 在**本知识库内**（`kbId` + `status='ready'` 过滤）按余弦距离取 TOP_K=5 片段 → 与最近 3 轮历史、system 规则拼装 → LLM 流式生成 → 服务端读上游 SSE、边读边转发，**引用快照作为流的第一行**先到达前端 → 生成完成后答案 + 快照落库。
+**一条问答的完整路径（Agent 版）**：问题 + 最近 3 轮历史 + 工具定义 → LLM 决策——闲聊直接作答（零检索），知识库问题则生成**改写后的检索问句**调用工具 → 服务端在**当前知识库内**（`kbId` 闭包持有，模型不可指定）做 pgvector 余弦检索 → 结果回传，模型续答；引用事件随流推送（协议 v2），跨步全局编号 → 完成后答案 + 引用快照落库。
 
 关键参数（均有评测或推理依据，见下文）：
 
@@ -76,21 +77,26 @@ flowchart LR
 |---|---|---|
 | 切片 | 目标 500 字 / 重叠 80 | `src/lib/chunk.ts` |
 | 向量 | bge-m3，1024 维，cosine | `src/lib/embedding.ts` |
-| 召回 | TOP_K = 5 | `src/lib/retrieve.ts` |
-| 上下文历史 | 最近 3 轮（6 条），不带旧引用 | `src/lib/llm.ts` |
-| 采样 | temperature = 0（线上与评测同源读取） | `src/lib/rag-prompt.json` |
+| 召回 | TOP_K = 5（工具 execute 内） | `src/lib/retrieve.ts` |
+| Agent 循环 | MAX_STEPS = 5（防失控封顶） | `src/lib/agent-llm.ts` |
+| 上下文历史 | 最近 3 轮（6 条），倒序取再反转 | `src/lib/history.ts` |
+| 采样 | temperature = 0 + thinking disabled（线上与评测同源） | `src/lib/agent-prompt.json` |
+
+流协议：`{"v":2,...}` 头行 → 事件行（tool 状态 / citations）→ **文本起始哨兵 `\u0001`** → 纯文本增量；错误走 `\u0000` 哨兵。边界全部显式声明（ADR-9），定义与解析器同居 `chat-protocol.ts` 成对变化。
 
 ## 评测
 
-不凭感觉调参。W6 建了一套 25 条的评测集（覆盖 12 个章节 / 9 个切片，含改述与跨片段计算 case），脚本三档：
+不凭感觉调参。W6 建了一套 25 条的评测集（覆盖 12 个章节 / 9 个切片，含改述与跨片段计算 case），检索层与答案层分开测：
 
 ```bash
-node scripts/eval.mjs --check      # 校验评测集指纹与配置对齐（防标注漂移）
-node scripts/eval.mjs              # 检索层：recall@1 / @3 / @5
-node scripts/eval.mjs --with-llm   # 答案层：检索 + 逐条调用 LLM 比对关键词
+node scripts/eval-agent.mjs --check # 校验评测集指纹与配置对齐（防标注漂移）
+node scripts/eval-agent.mjs         # Agent 路径：检索层 recall + 答案层关键词 + 成本
+node scripts/eval.mjs               # 旧路径对照（必检索架构，已退役，留作基线）
 ```
 
-**基线（2026-10-26）**：recall@1 = 0.740，recall@3 = 0.960，recall@5 = 1.000（9 块的库 @5 已饱和，调优看 @1/@3）；答案层关键词命中 25/25。
+**基线（2026-10-26，必检索架构）**：recall@1 = 0.740，recall@3 = 0.960，recall@5 = 1.000；答案层 25/25。
+
+**Agent 路径（2026-10-29，W11 退役前回归）**：recall@1 = 0.740，recall@3 = 0.960，recall@5 = 1.000；答案层 **25/25 零退化**；平均 1.08 次检索/问（含自发二次检索 case）。两次运行间 recall@3 在 0.960~1.000 间波动（#23 在测量噪声边界跳变）——temperature=0 稳住命中数，稳不住一切。Agent 时代的成本账如实记录：**知识类问题更贵**（in ≈2.2x：工具 schema + 多步消息重发；out ≈5.5x），收益在闲聊（零检索）与多跳（旧架构做不到）。
 
 两轮调优（完整记录见 [`eval/RESULTS.md`](eval/RESULTS.md)）：
 
@@ -113,8 +119,8 @@ node scripts/eval.mjs --with-llm   # 答案层：检索 + 逐条调用 LLM 比�
 
 坑：合并时 `callbacks` 必须写 `...authConfig.callbacks` 再追加——对象展开遇同名 key 是**覆盖不是合并**，漏了这行 `authorized` 就没了，路由保护**静默失效**（不报错、不告警）。
 
-### 3. LLM 调用用原生 fetch，不装 AI SDK
-W4 需要的只有两件事：流式吐字、透传非标准参数 `thinking`（DeepSeek 是推理模型，必须显式关闭思考，`enable_thinking: false` 实测无效）。AI SDK 的 streamText / useChat / tool-calling MVP 全用不上，而 `thinking` 这类非标准字段走 `providerOptions` 透传有被 provider 层吞掉的风险。原生 fetch + SSE 解析一共 60 行，全部在自己手里——**"provider 可替换"靠接口边界实现，不靠装库**：换服务商只动 `llm.ts` 一个文件。
+### 3. 单轮流式用原生 fetch，Agent 工具循环用 AI SDK（按需选型，两个时代）
+W4 需要的只有流式吐字 + 透传非标准参数 `thinking`（DeepSeek 是推理模型，必须显式关思考），AI SDK 的 tool-calling MVP 用不上——原生 fetch + SSE 解析 60 行，全在自己手里。W10 Agent 化需要多步工具循环、事件流、错误恢复，自己写状态机不划算——引入 `ai` + `@ai-sdk/openai`。**DeepSeek 的 `thinking` 参数 providerOptions 透传会被严格 schema 剥掉**，唯一通道是 `createOpenAI` 的自定义 fetch 中间件（请求体注入）——这个坑是 spike 阶段读包源码踩出来的，不是上线后炸出来的。教训：*"provider 可替换"靠接口边界实现；要不要装库看当周需求，不是立场。*
 
 ### 4. AI provider 走 OpenAI 兼容抽象
 无海外账号，用国内服务：Embedding 用 SiliconFlow `BAAI/bge-m3`（1024 维），LLM 用 DeepSeek。代码层统一 OpenAI 兼容协议指向各自 baseURL，保留切换能力。
@@ -145,6 +151,9 @@ BLOB_READ_WRITE_TOKEN 有 → Vercel Blob
 
 配套三条：会话 id 搭流的第一行回前端（不为拿 id 多一次往返）；「停止生成」落库标记 stopped、「生成失败」不落库（防止假回答污染数据）；切换会话靠 key 重挂载清状态。
 
+### 9. 流协议的数据边界必须显式声明（哨兵，不靠试探）
+Agent 化后引用从"流前快照"变成"流中产物"，协议升到 v2。第一版用"逐行找 `\n` + `JSON.parse` 失败就当文本"来区分事件行和答案——**第一天就穿帮**：闲聊不触发工具时服务端直接发文本，没有换行的答案整段被当成"没收全的事件行"扣在缓冲区，前端空白到刷新才显示。修法：文本开始前服务端必发哨兵 `\u0001`（错误哨兵 `\u0000` 同套路），客户端只认哨兵不猜。教训：*协议里"哪里是数据边界"是结构问题，试探是把正确性赌在数据形状上——和"判据要有独立参照点"是同一类错误。* 编码器与解析器同居一个文件、23 条边界用例（含本 bug 的回归用例）随仓库。
+
 ## 踩坑实录（部署侧精选）
 
 完整档案（F1~F8）在 [`docs/DEPLOY.md`](docs/DEPLOY.md)，这里挑三条跨平台通用的：
@@ -152,6 +161,13 @@ BLOB_READ_WRITE_TOKEN 有 → Vercel Blob
 - **secrets scanning 误报**：平台把构建产物里的字符串反查环境变量值，模型名、API 地址全被当密钥拦下。用审计脚本确认真密钥零命中后，按 key 白名单豁免。
 - **serverless 文件系统只读**：本地开发"上传后写 `.storage/`"一切正常，上线后 `ENOENT: /var/task/.storage`。这正是驱动抽象存在的意义——加一个 db 驱动即修复，业务代码零改动。
 - **未配置部署域名时 OAuth 404**：NextAuth 会用部署预览域名拼回调地址，而预览域名默认是私有的。`AUTH_URL` 必须显式指向正式域名。
+
+## 已知限制（如实记录，不藏）
+
+- **数据质量能击穿答案层**：测试 fixture（员工手册）头部带有一段"本文是虚构测试文档"的说明，它**有意**写进文档、也因此进了检索语料——实测一次模型检索到该块后答出"文档中没有相关内容"，而引用里明明有相关规则（疑似被 meta 文本干扰）。定性：不是代码 bug，是"任何进入语料的文本都会成为上下文"这一事实的活案例。评测期望块不受影响（0 条 case 依赖前言块），故记录不清洗。
+- **Agent 对知识类问题更贵**：工具 schema（约 300 token）+ 多步循环重发消息，in ≈2.2x / out ≈5.5x（对照数据见评测节）。收益场景是闲聊与多跳。prompt cache 类优化受国内 provider 能力限制，未做。
+- **生成中途按停，已出引用完整落库**（citations 数组在流外累积），但"边说边查"的罕见路径晚到引用只落库、本轮界面不回填（协议 v2 显式约束：事件行只保证出现在文本前）。
+- **检索相似度存在运行间波动**：同配置两次评测 recall@3 可差 0.04（单条 case 在阈值附近翻转），结论只看门槛不看小数点后第三位。
 
 ## 项目结构
 
@@ -162,7 +178,7 @@ src/
 │   │   └── [id]/              # 上传、文档列表、问答面板、会话侧栏
 │   ├── api/
 │   │   ├── health/            # 健康检查
-│   │   └── kb/[id]/chat/      # SSE 流式问答
+│   │   └── kb/[id]/chat-agent/ # Agent 问答（工具循环 + 流协议 v2）
 │   ├── login/                 # 登录页
 │   ├── error.tsx / not-found.tsx
 │   └── page.tsx               # 根路径 → /kb
@@ -172,20 +188,24 @@ src/
     ├── parse.ts               # unpdf 动态导入（ADR-7）
     ├── chunk.ts               # 500/80 切片
     ├── embedding.ts           # bge-m3 / 1024 维
-    ├── retrieve.ts            # pgvector 余弦检索，TOP_K
-    ├── llm.ts                 # 原生 fetch SSE（ADR-3）
-    ├── rag-prompt.json        # prompt 单一来源（线上与评测同源）
-    ├── chat-protocol.ts       # 流协议：首行快照 + 增量文本 + 错误帧
+    ├── retrieve.ts            # pgvector 余弦检索，TOP_K（工具 execute 内调用）
+    ├── agent-llm.ts           # Agent 工具循环：AI SDK fullStream → 四类事件（ADR-3）
+    ├── agent-prompt.json      # Agent prompt 单一来源（身份/检索纪律/全局编号/禁 markdown）
+    ├── llm.ts                 # 原生 fetch SSE（旧路径，ADR-3 前身，评测对照仍用）
+    ├── rag-prompt.json        # 旧路径 prompt（评测对照）
+    ├── chat-protocol.ts       # 流协议 v1/v2 定义 + 解析器（成对变化，23 条边界用例）
     ├── history.ts             # 会话/消息装载，数据边界校验
     └── storage.ts             # 三驱动对象存储（ADR-7）
 eval/cases.json                # 25 条评测集（带内容指纹）
-scripts/eval.mjs               # 评测脚本（--check / 默认 / --with-llm）
+scripts/eval-agent.mjs         # Agent 路径评测（--check / 默认，--kb 锁库）
+scripts/eval.mjs               # 旧路径评测（对照）
+scripts/probe-tools.mjs        # tool-calling 探针（换模型时重跑）
 docs/                          # 各周验收 spec + 部署手册
 ```
 
 ## Out of Scope（显式不做）
 
-团队协作与共享、在线文档编辑、外部数据源同步（网页/飞书/Notion）、Agent 式 query 改写与多轮工具调用、计费配额、移动端原生适配、rerank 精排（已留接口位置）、大文件直传（签名 URL 方案）。
+团队协作与共享、在线文档编辑、外部数据源同步（网页/飞书/Notion）、多文档联合推理的显式规划（多跳目前靠模型自发多步检索）、计费配额、移动端原生适配、rerank 精排（已留接口位置）、大文件直传（签名 URL 方案）、prompt cache（国内 provider 支持不稳）。
 
 这些不是没想到，是**评估后决定不进 MVP**——每一条展开都会显著增加攻击面或复杂度，而当前的核心命题是把 RAG 主链路和评测方法做扎实。
 
@@ -199,3 +219,6 @@ docs/                          # 各周验收 spec + 部署手册
 - [x] W6 评测集 + 基线 + 两轮调优
 - [x] W7 部署上线（Netlify）+ 健康检查 + 运维手册
 - [x] W8 完整 README + 演示录屏
+- [x] W9 Agent 可行性探针 + AI SDK spike + 选型
+- [x] W10 Agent 化主链路（工具检索 / 协议 v2 / 评测零退化）
+- [x] W11 收尾：旧端点退役、检索状态提示、文档对齐
