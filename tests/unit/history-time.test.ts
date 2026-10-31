@@ -7,7 +7,9 @@
 import { describe, expect, it } from 'vitest';
 
 import { conversationTimeParts } from '@/lib/conversation-time';
-import { titleFromQuestion } from '@/lib/history';
+// ⚠️ 必须从 conversation-title 直接 import，不能走 history —— history 顶层会构造 Prisma client，
+// CI（没有 .env.local）会在 import 阶段就抛"缺少 DATABASE_URL"（2026-10-31 实测）。
+import { titleFromQuestion } from '@/lib/conversation-title';
 
 describe('titleFromQuestion', () => {
   it('短问题原样作标题', () => {

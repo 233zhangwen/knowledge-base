@@ -25,13 +25,9 @@ import { prisma } from './prisma';
 export const HISTORY_TURNS = 3;
 const HISTORY_MESSAGE_LIMIT = HISTORY_TURNS * 2;
 
-/** 会话标题取首问前 20 个字。超长时截断加省略号。 */
-const TITLE_LENGTH = 20;
-
-export function titleFromQuestion(question: string): string {
-  const flat = question.replace(/\s+/g, ' ').trim();
-  return flat.length > TITLE_LENGTH ? `${flat.slice(0, TITLE_LENGTH)}…` : flat;
-}
+/** 会话标题取首问前 20 个字。超长时截断加省略号。
+ *  ⚠️ 实现搬到 ./conversation-title.ts（纯函数，不能和"顶层就连库"的模块混住，见那里的注释）。 */
+export { titleFromQuestion } from './conversation-title';
 
 /** 会话不存在或不属于当前用户/知识库。调用方应把它翻译成 404，而不是 403。 */
 export class ConversationNotFound extends Error {

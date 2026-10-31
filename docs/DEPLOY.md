@@ -45,7 +45,10 @@
 | `LLM_API_KEY` / `LLM_BASE_URL` / `LLM_MODEL` | DeepSeek | |
 | `RERANK_MODEL` | `BAAI/bge-reranker-v2-m3` | 当前代码未使用，预留 |
 | `STORAGE_DRIVER` | `db` | **serverless 平台必须**，否则上传报 ENOENT（F6） |
-| `NETLIFY_NODE_VERSION` | `22` | 与本地大版本一致 |
+| `NETLIFY_NODE_VERSION` | `22` | 与本地大版本一致；**CI 也用 22**，两边不一致等于没验 |
+| `ADMIN_EMAIL` | 你的登录邮箱 | `/admin` 运维页白名单；**不配则该页 404**（不会 403 —— 不暴露"这里有个管理页"） |
+| `LOG_LEVEL` | `info`（可选） | 结构化日志级别；排查时临时改 `debug` |
+| `LLM_PRICE_IN_PER_M` / `LLM_PRICE_OUT_PER_M` | 元/百万 token（可选） | 配了 `/admin` 才显示金额；不配只显示 token。单价自己按控制台维护，别抄 |
 
 ### 4. GitHub OAuth 回调地址
 
