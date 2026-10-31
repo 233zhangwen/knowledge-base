@@ -222,6 +222,19 @@ model Message {
    */
   finishReason String @default("complete") // complete | stopped
 
+  /**
+   * 每答成本（W13 D 组）——全部可空，老数据不回填。
+   *
+   * 为什么要落库而不是只打日志：Agent 一次回答可能跑 1~5 个 LLM 步，
+   * 成本是 W9 实测的 in≈2.2x / out≈5.5x（相对纯 RAG）。这个倍率要能被持续观测，
+   * 否则"Agent 化更贵"只是 W9 那一次的结论，而不是能天天看的数字。
+   * 可空是因为 stopped（用户中断）时 finish 事件可能没发，拿不到 usage。
+   */
+  inputTokens  Int?
+  outputTokens Int?
+  steps        Int? // 本次回答跑了几步（含未调工具的收尾步）
+  latencyMs    Int? // 请求进来到流结束的墙钟时间
+
   createdAt DateTime @default(now())
 
   conversationId String
@@ -229,4 +242,36 @@ model Message {
 
   // 每次打开会话都要「按会话取最近若干条」，这个复合索引让 take + orderBy 走索引
   @@index([conversationId, createdAt])
+}
+
+/**
+ * 错误记录（W13 C 组，决策①自建）。
+ *
+ * 为什么合并重复而不是一错一行：一次故障会刷出成百上千条同样的错，
+ * 不合并的话查看页第一天就被淹没，等于没有。fingerprint 相同的只累加 count。
+ *
+ * 为什么自己建表而不用 Sentry：见 ACCEPTANCE-W13 决策① —— 上报通道本身不能是不稳的，
+ * 而海外服务在本地网络下确实不稳（W9 实测）。自建还能顺手做个成本统计页。
+ */
+model ErrorLog {
+  id String @id @default(cuid())
+
+  level   String // error | warn
+  event   String // 点分事件名，与 log.ts 的 evt 一致，方便两边对账
+  message String
+  stack   String?
+  path    String? // 出错的页面/接口
+
+  /**
+   * 去重指纹：sha1(event + message 前 200 字 + path)。
+   * ⚠️ 故意**不含时间、不含用户 id、不含随机 id** —— 任何随请求变化的东西进来，
+   * 去重就失效了（同一个 bug 每行都算"新错误"）。
+   */
+  fingerprint String @unique
+
+  count     Int      @default(1)
+  firstSeen DateTime @default(now())
+  lastSeen  DateTime @default(now())
+
+  @@index([lastSeen])
 }

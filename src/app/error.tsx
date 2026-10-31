@@ -27,8 +27,28 @@ export default function Error({
   reset: () => void;
 }) {
   useEffect(() => {
-    // 客户端日志：平台日志里同时能看到服务端那条，两边用 digest 对上
+    // 服务端日志里同时能看到这条（reportError 内部会打 error 日志），两边用 digest 对上
     console.error('[app] 页面渲染失败', error);
+
+    // W13：上报到 /api/errors 落库，进 /admin 可见。
+    // 用 sendBeacon 而不是 fetch：用户很可能在错误页直接关标签页，
+    // fetch 会在页面销毁时被取消，beacon 交给浏览器发完。
+    // beacon 不支持自定义 header，所以用 Blob 指定 content-type。
+    const payload = JSON.stringify({
+      event: 'client.render.error',
+      message: error.message || '页面渲染失败',
+      stack: error.stack,
+      path: window.location.pathname,
+      digest: error.digest,
+    });
+    if (!navigator.sendBeacon?.('/api/errors', new Blob([payload], { type: 'application/json' }))) {
+      // beacon 被浏览器拒绝（极少见）时退回 fetch，失败就算了 —— 上报不能影响用户
+      void fetch('/api/errors', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: payload,
+      }).catch(() => {});
+    }
   }, [error]);
 
   return (
