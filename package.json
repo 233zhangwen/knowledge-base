@@ -17,7 +17,10 @@
     "test:e2e": "playwright test",
     "e2e:auth": "node scripts/save-auth.mjs",
     "verify:stream": "node --experimental-transform-types scripts/verify-stream-protocol.mts",
-    "verify:rag": "node --experimental-transform-types scripts/verify-rag-e2e.mts"
+    "verify:rag": "node --experimental-transform-types scripts/verify-rag-e2e.mts",
+    "eval:injection": "node scripts/eval-injection.mjs",
+    "eval:injection:baseline": "node scripts/eval-injection.mjs --baseline",
+    "seed:injection": "node scripts/seed-injection-fixtures.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.104",
