@@ -173,6 +173,23 @@ PLAYWRIGHT_DOWNLOAD_HOST=https://cdn.npmmirror.com/binaries/playwright npx playw
 - **未执行（我这边装不了依赖）**：`npm install`、`npm run test:unit`、A5 的"改坏必须红"
   反证、`e2e:auth`、`test:e2e`。R1~R3 全部归用户。
 
+### 实测记录（2026-10-31，依赖装好后）
+
+| 项 | 结果 |
+|---|---|
+| `npm run test:unit` | **47/47 通过，0.44s**（5 个文件：file-types 10 / chunk 8 / rag-messages 7 / protocol 11 / history-time 11） |
+| **A5 反证**（`CHUNK_OVERLAP` 80→0） | **1 failed，46 passed** —— `expected 1204 to be greater than 1204`；改回后全绿 |
+| **R2**（假 `DATABASE_URL` 跑单测） | 照样 47/47 —— 证明单测真不碰库 |
+| `RUN_DB_TESTS=1 npm run test:db` | **6/6 通过，7.9s**；事后查 `w12test-%` 用户残留 = **0**（B2 达标） |
+
+**A5 反证额外抓到一个测试自身的漏洞**：原来那条"相邻块有重叠"只断言
+`chunks[1].startsWith(chunks[0].slice(-OVERLAP))`，而 overlap 改成 0 时
+`slice(-0)` 是空串、`startsWith('')` 恒真 —— 测试照样绿。
+已补一条"总字符数必须多于原文"的总量约束，这才真正钉住重叠。
+教训：**断言要能区分"目标行为"和"恒真表达式"**，否则 A5 这关过了也是假过。
+
+- **仍未执行**：`e2e:auth` 与 `test:e2e`（需要真人登录 GitHub，只能用户跑）。
+
 ## 修订记录
 
 - 2026-10-30 V1：首版。五组范围 + 两个待决事项。

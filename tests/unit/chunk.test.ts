@@ -59,9 +59,18 @@ describe('splitText · 边界与保真', () => {
 
   it('相邻块之间有重叠：第 2 块开头是第 1 块结尾的一段', () => {
     const paragraph = '丙'.repeat(400);
-    const chunks = splitText(`${paragraph}\n\n${paragraph}\n\n${paragraph}`);
+    const text = `${paragraph}\n\n${paragraph}\n\n${paragraph}`;
+    const chunks = splitText(text);
     expect(chunks.length).toBeGreaterThan(1);
     const tailOfFirst = chunks[0].slice(-CHUNK_OVERLAP);
     expect(chunks[1].startsWith(tailOfFirst)).toBe(true);
+
+    /**
+     * ⚠️ 上面那句是**恒真**的：CHUNK_OVERLAP 被改成 0 时 tailOfFirst 是空串，
+     * startsWith('') 永远成立 —— 也就是说光靠它，"重叠悄悄消失"这种回归测不出来。
+     * 补一条总量约束：有重叠时，所有块拼起来的字符数必然**多于**原文。
+     * （W12 做 A5 反证时实测发现的漏洞，不是假设。）
+     */
+    expect(chunks.join('').length).toBeGreaterThan(text.length);
   });
 });
