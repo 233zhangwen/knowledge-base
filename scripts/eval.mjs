@@ -36,6 +36,21 @@ const RETRIEVE_PATH = path.join(ROOT, 'src', 'lib', 'retrieve.ts');
 const args = process.argv.slice(2);
 const CHECK_ONLY = args.includes('--check');
 const WITH_LLM = args.includes('--with-llm');
+
+/**
+ * 评测库名。W15 起必须显式指定，默认锁定「知识库C」。
+ *
+ * 为什么不能像以前那样"按标题全局找唯一文档"：
+ *   扩库后同一个标题可能合法地出现在多个库里（比如 W7 部署冒烟时也传过一份 C 文档）。
+ *   全局唯一这条纪律本来是为了防"同名文档取错"，但**跨库同名不是错误** ——
+ *   真正的要求是「同一个库内标题唯一」。改成按库限定后：
+ *     ① 跨库同名不再误报；
+ *     ② 顺带修掉一个更隐蔽的问题：以前每条 case 用"自己文档所在的 kbId"检索，
+ *        一旦取错文档，检索范围会**静默漂到别的库**，指标照常打印，没人看得出来。
+ *   现在检索范围从头到尾只有这一个 kbId。
+ */
+const kbArg = args.find((a) => a.startsWith('--kb='));
+const KB_NAME = kbArg ? kbArg.slice('--kb='.length) : '知识库C';
 /**
  * 相似度默认不打印（B3 实测后改的，见 spec 修订 V12）：
  * embedding 是远程服务，同一句问题两次返回的向量浮点尾数会差最后几位
@@ -103,7 +118,23 @@ function error(msg) {
 }
 
 // ---------- 校验（--check） ----------
+/**
+ * 解析评测库。库名必须唯一命中 —— 库选错了，后面所有指标都是在答另一个库的题。
+ */
+async function resolveKbId(client) {
+  const { rows } = await client.query(`select id from "KnowledgeBase" where name = $1`, [KB_NAME]);
+  if (rows.length !== 1) {
+    const { rows: all } = await client.query(`select name from "KnowledgeBase" order by "createdAt"`);
+    throw new Error(
+      `知识库「${KB_NAME}」匹配到 ${rows.length} 个（必须恰好 1 个）。现有库：` +
+        all.map((r) => r.name).join(' / '),
+    );
+  }
+  return rows[0].id;
+}
+
 async function runCheck(client) {
+  const KB_ID = await resolveKbId(client);
   if (!Array.isArray(cases)) throw new Error('eval/cases.json 顶层必须是数组');
   if (!cases.length) throw new Error('eval/cases.json 是空的');
 
@@ -142,13 +173,15 @@ async function runCheck(client) {
       error(`${where} 的 answerMustContain 必须是 null 或非空数组`);
     }
 
-    // 文档定位：必须恰好 1 个（V11：同名文档会取错）
+    // 文档定位：在评测库内必须恰好 1 个（V11：同库内同名文档会取错）
     const { rows: docs } = await client.query(
-      `select id, "kbId" from "Document" where title = $1`,
-      [c.documentTitle],
+      `select id, "kbId" from "Document" where title = $1 and "kbId" = $2`,
+      [c.documentTitle, KB_ID],
     );
     if (docs.length !== 1) {
-      error(`${where} 的 documentTitle「${c.documentTitle}」匹配到 ${docs.length} 个文档（必须恰好 1 个）`);
+      error(
+        `${where} 的 documentTitle「${c.documentTitle}」在知识库「${KB_NAME}」里匹配到 ${docs.length} 个文档（必须恰好 1 个）`,
+      );
       continue;
     }
     if (!c.documentTitle) error(`${where} 缺 documentTitle`);
@@ -177,6 +210,76 @@ async function runCheck(client) {
         );
       }
     }
+
+    /**
+     * W15：负例块（confuserChunks）。
+     *
+     * 存在的理由：扩库后每道题都有"语义高度相似但答案不同"的干扰块（旧版手册、
+     * 子公司制度）。不把负例登记下来，就只能测出"排序有没有崩"，测不出
+     * "rerank 有没有把干扰项压下去" —— 而后者才是这个 W 唯一想证明的事。
+     *
+     * 校验口径与 expectChunks 完全一致（同名文档唯一、index 不越界、snippet 指纹匹配），
+     * 否则负例写错了没人会发现，confuser 压制率就成了一个自己骗自己的数。
+     */
+    if (c.confuserChunks !== undefined) {
+      if (!Array.isArray(c.confuserChunks)) {
+        error(`${where} 的 confuserChunks 必须是数组（没有负例就省略该字段，不要写 null）`);
+      } else {
+        for (const [j, e] of c.confuserChunks.entries()) {
+          const at = `${where} 的 confuserChunks[${j}]`;
+          if (!e?.documentTitle) {
+            error(`${at} 缺 documentTitle`);
+            continue;
+          }
+          if (!Number.isInteger(e?.index) || e.index < 0) {
+            error(`${at}.index 不是非负整数`);
+            continue;
+          }
+          if (!e?.snippet || String(e.snippet).trim().length < 4) {
+            error(`${at}.snippet 缺失或过短（<4 字，不足以当指纹）`);
+            continue;
+          }
+
+          const { rows: cdocs } = await client.query(
+            `select id from "Document" where title = $1 and "kbId" = $2`,
+            [e.documentTitle, KB_ID],
+          );
+          if (cdocs.length !== 1) {
+            error(
+              `${at} 的 documentTitle「${e.documentTitle}」在知识库「${KB_NAME}」里匹配到 ${cdocs.length} 个文档（必须恰好 1 个）`,
+            );
+            continue;
+          }
+
+          const { rows: cchunks } = await client.query(
+            `select "chunkIndex", "content" from "Chunk" where "documentId" = $1 order by "chunkIndex"`,
+            [cdocs[0].id],
+          );
+          const target = cchunks.find((x) => x.chunkIndex === e.index);
+          if (!target) {
+            error(
+              `${at}.index=${e.index} 越界：该文档只有 ${cchunks.length} 块（0~${cchunks.length - 1}）`,
+            );
+            continue;
+          }
+          const head = String(target.content).trimStart();
+          if (!head.startsWith(String(e.snippet).trimStart())) {
+            error(
+              `${at} 标注已过期：chunk ${e.index} 开头是「${head.slice(0, 16)}」，期望「${e.snippet}」`,
+            );
+          }
+          // 负例与正例指向同一块 = 自己跟自己打架，这种 case 的压制率恒为 1，毫无意义
+          if (
+            e.documentTitle === c.documentTitle &&
+            c.expectChunks.some((x) => x.index === e.index)
+          ) {
+            error(
+              `${at} 与 expectChunks 指向同一块（chunk ${e.index}）—— 负例不能同时是正例`,
+            );
+          }
+        }
+      }
+    }
   }
 
   // 纯检索 case（answerMustContain=null）允许存在，但不许超过 1/3（V8）
@@ -195,6 +298,21 @@ async function runCheck(client) {
    * 真正有效的是把它打印出来：改 TOP_K 的人会立刻在输出里看到 K 变了，
    * 从而知道 eval/RESULTS.md 的历史基线作废（C1 要求基线记录 K 值）。
    */
+  /**
+   * 评测库的规模也必须被"看见"。
+   *
+   * W15 扩库（9 块 → 40 块）直接改变了所有历史基线的可比性：
+   * 库越大，同样的检索策略 recall 越低，这是环境变难，不是退化。
+   * 把它打印出来，是为了让"拿新结果和旧基线比"这个错误当场暴露 ——
+   * 而不是等有人看到 0.740 → 0.5xx 时怀疑自己改坏了。
+   */
+  const { rows: stat } = await client.query(
+    `select count(distinct d.id) as docs, count(c.id) as chunks
+       from "Document" d left join "Chunk" c on c."documentId" = d.id
+      where d."kbId" = $1 and d.status = 'ready'`,
+    [KB_ID],
+  );
+  console.log(`评测库：${KB_NAME} · ${stat[0].docs} 篇 ready 文档 · ${stat[0].chunks} 块`);
   console.log(
     `K=${K}（来源 src/lib/retrieve.ts 的 TOP_K；改它会让 eval/RESULTS.md 的历史基线作废）`,
   );
@@ -214,6 +332,7 @@ async function runCheck(client) {
     process.exit(1);
   }
   console.log(`OK: ${cases.length} cases`);
+  return KB_ID;
 }
 
 // ---------- 检索 ----------
@@ -355,7 +474,7 @@ await client.connect();
 
 const t0 = Date.now();
 try {
-  await runCheck(client);
+  const KB_ID = await runCheck(client);
   if (CHECK_ONLY) {
     await client.end();
     console.error(`[check] 耗时 ${Date.now() - t0}ms`); // 耗时只走 stderr（B1）
@@ -366,8 +485,8 @@ try {
   for (const c of cases) {
     try {
       const { rows: docs } = await client.query(
-        `select id, "kbId" from "Document" where title = $1`,
-        [c.documentTitle],
+        `select id, "kbId" from "Document" where title = $1 and "kbId" = $2`,
+        [c.documentTitle, KB_ID],
       );
       if (docs.length !== 1) throw new Error(`文档定位失败（匹配 ${docs.length} 个）`);
       const doc = docs[0];

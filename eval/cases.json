@@ -201,5 +201,304 @@
     "question": "公司给员工健身补贴吗，多少钱？",
     "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
     "answerMustContain": ["1200"]
+  },
+{
+    "id": "v01",
+    "section": "版本冲突 · 病假",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "病假超过 10 天的部分按什么标准发放工资？",
+    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "E-星海科技员工手册(2024版).md",
+        "index": 2,
+        "snippet": "全年病假在 5 天以内",
+        "note": "旧版：超过 5 天按基本工资 70%"
+      }
+    ],
+    "answerMustContain": ["80%"]
+  },
+  {
+    "id": "v02",
+    "section": "版本冲突 · 考勤",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "一个自然月内累计迟到几次会取消当季度绩效奖金参评资格？",
+    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "E-星海科技员工手册(2024版).md",
+        "index": 1,
+        "snippet": "5 日前汇总并公示。",
+        "note": "旧版：五次"
+      }
+    ],
+    "answerMustContain": ["三次"]
+  },
+  {
+    "id": "v03",
+    "section": "版本冲突 · 离职",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "员工提出辞职应提前多久以书面形式通知公司？",
+    "expectChunks": [{ "index": 8, "snippet": "交接须填写《离职交接单》" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "E-星海科技员工手册(2024版).md",
+        "index": 7,
+        "snippet": "个月）的员工，享受每月 2000 元",
+        "note": "旧版：提前 45 天"
+      }
+    ],
+    "answerMustContain": ["30 天"]
+  },
+  {
+    "id": "v04",
+    "section": "版本冲突 · 离职",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "未休年假折算工资是按日均工资的几倍计算？",
+    "expectChunks": [{ "index": 8, "snippet": "交接须填写《离职交接单》" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "E-星海科技员工手册(2024版).md",
+        "index": 7,
+        "snippet": "个月）的员工，享受每月 2000 元",
+        "note": "旧版：1.5 倍，最多 8 天"
+      }
+    ],
+    "answerMustContain": ["2 倍"]
+  },
+  {
+    "id": "v05",
+    "section": "版本冲突 · 报销",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "报销单据应在费用发生后多少个工作日内提交？",
+    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "E-星海科技员工手册(2024版).md",
+        "index": 4,
+        "snippet": "30 天的不予受理。",
+        "note": "旧版：10 个工作日"
+      }
+    ],
+    "answerMustContain": ["15 个工作日"]
+  },
+  {
+    "id": "v06",
+    "section": "版本冲突 · 设备",
+    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "question": "公司配发的笔记本电脑折旧周期是几年？",
+    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "E-星海科技员工手册(2024版).md",
+        "index": 4,
+        "snippet": "30 天的不予受理。",
+        "note": "旧版：5 年"
+      }
+    ],
+    "answerMustContain": ["4 年"]
+  },
+  {
+    "id": "n01",
+    "section": "否定句 · 试用期年假",
+    "documentTitle": "I-星海科技实习与试用期管理办法.md",
+    "question": "试用期员工能享受带薪年假吗？",
+    "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 2,
+        "snippet": "有带薪年假 17 天",
+        "note": "正式员工的年假条款，措辞几乎相同但主体不同"
+      }
+    ],
+    "answerMustContain": ["不享受"]
+  },
+  {
+    "id": "n02",
+    "section": "否定句 · 试用期绩效",
+    "documentTitle": "I-星海科技实习与试用期管理办法.md",
+    "question": "试用期员工参与季度绩效奖金的分配吗？",
+    "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 5,
+        "snippet": "端管理软件，并开启全盘加密",
+        "note": "绩效条款本身，未提试用期"
+      }
+    ],
+    "answerMustContain": ["不参与"]
+  },
+  {
+    "id": "n03",
+    "section": "否定句 · 实习补贴",
+    "documentTitle": "I-星海科技实习与试用期管理办法.md",
+    "question": "本科实习生的每日实习补贴是多少？",
+    "expectChunks": [{ "index": 2, "snippet": "150 元、硕士生每日 200 元" }],
+    "confuserChunks": [],
+    "answerMustContain": ["150"]
+  },
+  {
+    "id": "n04",
+    "section": "否定句 · 工龄",
+    "documentTitle": "I-星海科技实习与试用期管理办法.md",
+    "question": "实习期计入工龄吗？",
+    "expectChunks": [{ "index": 2, "snippet": "150 元、硕士生每日 200 元" }],
+    "confuserChunks": [],
+    "answerMustContain": ["不计入"]
+  },
+  {
+    "id": "n05",
+    "section": "否定句 · 试用期培训",
+    "documentTitle": "I-星海科技实习与试用期管理办法.md",
+    "question": "试用期员工可以使用年度培训基金吗？",
+    "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 3,
+        "snippet": "假按当地法规执行",
+        "note": "培训基金 8000 元的正面条款"
+      }
+    ],
+    "answerMustContain": ["不享受"]
+  },
+  {
+    "id": "n06",
+    "section": "否定句 · 试用期离职",
+    "documentTitle": "I-星海科技实习与试用期管理办法.md",
+    "question": "试用期内员工提出离职，需要提前几天通知？",
+    "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 8,
+        "snippet": "交接须填写《离职交接单》",
+        "note": "正式员工 30 天"
+      }
+    ],
+    "answerMustContain": ["3 天"]
+  },
+  {
+    "id": "s01",
+    "section": "主体区分 · 成研到岗",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心要求员工上午几点前完成到岗打卡？",
+    "expectChunks": [{ "index": 0, "snippet": "# 星海科技（成都）研发中心管理制度" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 0,
+        "snippet": "# 星海科技员工手册",
+        "note": "母公司弹性工作制：9:40"
+      }
+    ],
+    "answerMustContain": ["9:00"]
+  },
+  {
+    "id": "s02",
+    "section": "主体区分 · 成研伙食补助",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心人员出差期间的每日伙食补助是多少？",
+    "expectChunks": [{ "index": 2, "snippet": "研发中心负责人审批。" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 7,
+        "snippet": "违规行为可通过匿名信箱",
+        "note": "母公司：120 元"
+      }
+    ],
+    "answerMustContain": ["100 元"]
+  },
+  {
+    "id": "s03",
+    "section": "主体区分 · 成研调休",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心的加班调休有效期是多久？",
+    "expectChunks": [{ "index": 4, "snippet": "为期 8 周的导师带训期" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 2,
+        "snippet": "有带薪年假 17 天",
+        "note": "母公司：三个月"
+      }
+    ],
+    "answerMustContain": ["两个月"]
+  },
+  {
+    "id": "s04",
+    "section": "主体区分 · 成研绩效",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心绩效 S 档最多可以占多少人？",
+    "expectChunks": [{ "index": 3, "snippet": "效考核每季度一次" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 5,
+        "snippet": "端管理软件，并开启全盘加密",
+        "note": "母公司：10%"
+      }
+    ],
+    "answerMustContain": ["15%"]
+  },
+  {
+    "id": "s05",
+    "section": "主体区分 · 成研带训",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心新员工的导师带训期有多长？",
+    "expectChunks": [{ "index": 4, "snippet": "为期 8 周的导师带训期" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 6,
+        "snippet": "，形式为午餐会",
+        "note": "母公司：6 周"
+      }
+    ],
+    "answerMustContain": ["8 周"]
+  },
+  {
+    "id": "s06",
+    "section": "主体区分 · 成研保密",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心员工的离职保密义务期限是多久？",
+    "expectChunks": [{ "index": 5, "snippet": "3 个工作日的，须提交医院出具的休假建议书" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 5,
+        "snippet": "端管理软件，并开启全盘加密",
+        "note": "母公司：三年"
+      }
+    ],
+    "answerMustContain": ["五年"]
+  },
+  {
+    "id": "s07",
+    "section": "主体区分 · 成研住宿",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心放弃集体宿舍的员工，每月能领多少住房补贴？",
+    "expectChunks": [{ "index": 1, "snippet": "部双重审批。" }],
+    "confuserChunks": [],
+    "answerMustContain": ["800"]
+  },
+  {
+    "id": "s08",
+    "section": "主体区分 · 成研调薪",
+    "documentTitle": "F-星海科技成都研发中心管理制度.md",
+    "question": "成都研发中心的年度调薪在每年几月执行？",
+    "expectChunks": [{ "index": 3, "snippet": "效考核每季度一次" }],
+    "confuserChunks": [
+      {
+        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "index": 5,
+        "snippet": "端管理软件，并开启全盘加密",
+        "note": "母公司：4 月"
+      }
+    ],
+    "answerMustContain": ["5 月"]
   }
 ]
