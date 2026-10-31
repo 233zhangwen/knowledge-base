@@ -28,6 +28,10 @@
    （Netlify 2026-07 起新项目默认私有，否则访客会跳登录页 —— 见 F4）
 4. Deploys → Trigger deploy → Deploy site
 
+> ⚠️ **上线节奏（F9 之后）**：自动发布已锁（Auto Publishing Locked），push 不会自动上线。
+> 上线 = 攒一批 commit 后 **Clear cache and deploy site** 手动发一次，每月约 4 次。
+> 每次部署 ≈ 1 credit，免费层 300/月，按这个节奏绰绰有余。
+
 ### 3. 环境变量清单
 
 值全部来自本地 `.env.local`。**`HTTPS_PROXY` 千万不能配**（那是本机翻墙用的，海外机房直连反而会被它坑）。
@@ -121,6 +125,7 @@ PDF 样本可用 `scripts/make-fixture-pdf.mjs` 生成（零依赖，改事实�
 | **F6** | 上传报 `ENOENT: mkdir '/var/task/.storage'` | serverless 函数文件系统**只读**，`storage.ts` 的磁盘驱动不适用 | 配 `STORAGE_DRIVER=db`，原件存 Postgres `ObjectFile` 表 |
 | **F7** | 运行时报 `Unknown field X for select statement` | `prisma generate` 静默失败（本机 safe-delete 组件间歇失败），schema 改了但 client 没跟上 | 重跑 generate 并 **grep 产物验证**：`grep -rl <新字段> src/generated/prisma` |
 | **F8** | 从域名根访问是 create-next-app 欢迎页 | 根路由从未实现（本地开发一直直接进 `/kb`） | `app/page.tsx` 改 `redirect('/kb')` |
+| **F9** | 连续多日 push 后线上突然不更新了，`/api/health` 的 commit 停在旧版本，Deploys 页面也无新构建记录；Usage & billing 显示 **Production deploys are paused** | 免费层 300 credits/月，**每次 push 触发的生产构建 ≈ 1 credit**，被高频 push 烧穿（10-27~10-31 烧了 100+）；余额归零后生产部署暂停，站点保持在线但停更 | ① **Deploys → Lock to stop auto publishing**（锁自动发布）；② 部署节奏改为**攒批手动**：W 收口时 Clear cache and deploy 一次（约 4 次/月 = 4 credits）；③ 已配的环境变量在下次部署自动生效，不用急着重发 |
 
 ---
 
