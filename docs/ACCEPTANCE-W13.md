@@ -231,10 +231,25 @@ latencyMs    Int?
 | E 回归 | 部分 | tsc 0；eslint **0 error**（修了两条历史 error：`DeleteConversationButton` 的 setState-in-effect → ref；`/admin` 的渲染期 `new Date()` → 移出组件体）；`next build` 假库本地真跑通（全路由 ƒ dynamic，验证了 A3 的假设）；`test:unit` 58 绿；`test:db` **9 绿**（新增 3 条去重/节流） |
 
 **反证进度**：
-- R1 ✅ 首次 CI 真的红了（tsc），证明流水线不是装饰 —— 虽然红的原因是我自己漏了 typegen。
+- R1 ✅ CI 真的能红、也能绿：首轮红在 tsc（`next typegen` 缺失），次轮红在单测
+  （`缺少 DATABASE_URL` —— 纯函数 `titleFromQuestion` 住在 `history.ts` 里被逼加载 Prisma），
+  两处修完后 `a57d202` 的 CI **static + build 双绿**。
+  → 这比"故意写个假断言"更有说服力：两次都是真问题，不是演的。
 - R2 ✅ 单测覆盖：`LOG_LEVEL=error` 时 info/warn 全部静默。
 - R3 ✅ DB 测试：节流关闭时同错 3 次 → 1 行 count=3；节流开启 → count=1；不同 message 不合并。事后查残留 0 行。
-- R4 ⏳ 需人工：去掉 `ADMIN_EMAIL` 访问 `/admin` 应 404。
+- R4 ⏳ 需人工，且**默认状态就是 404**（`.env.local` 里还没有 `ADMIN_EMAIL`）：
+  直接访问 `/admin` 应 404；加上 `ADMIN_EMAIL=你的邮箱` 重启后应能看到页面。
+
+## 10. 上线要做的事（W13 新增的环境变量）
+
+| Key | 值 | 不做会怎样 |
+|---|---|---|
+| `ADMIN_EMAIL` | 你的 GitHub 登录邮箱 | `/admin` 永远 404（不配就是"这个功能等于没上"） |
+| `LOG_LEVEL` | 可省略（默认 info） | 无影响 |
+| `LLM_PRICE_IN_PER_M` / `LLM_PRICE_OUT_PER_M` | 元/百万 token | 成本区只显示 token，不显示金额 |
+
+Netlify 加完变量要**重新部署**才生效（构建期注入的只有 `NEXT_PUBLIC_COMMIT_REF`，其余是运行时读的，
+但 Netlify 的函数环境变量变更要求一次新部署才会挂到运行时）。
 
 ## 修订记录
 
