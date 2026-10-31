@@ -41,11 +41,20 @@ type ReportInput = {
  * DB 去重（fingerprint unique）能保证不重复建行，但**每次上报都是一次写库**，
  * 流量照样能把免费层连接数打满。这里在入口先挡一道。
  *
+ * 可配置（ERROR_REPORT_THROTTLE_MS）：默认 60s；设成 0 就等于关闭节流。
+ * 之所以做成环境变量而不是常量：DB 测试要验证"去重累加"就必须连写多次，
+ * 写成常量的话测试只能验证"被节流了"，真正想测的 upsert 分支永远走不到。
+ *
  * 局限（写清楚，别假装没有）：进程重启后清零；多实例部署时各算各的。
  * 对我们的量级够用 —— 真要精确得用 Redis。
  */
-const THROTTLE_MS = 60_000;
+const DEFAULT_THROTTLE_MS = 60_000;
 const lastWriteAt = new Map<string, number>();
+
+function throttleMs(): number {
+  const raw = Number(process.env.ERROR_REPORT_THROTTLE_MS);
+  return Number.isFinite(raw) && raw >= 0 ? raw : DEFAULT_THROTTLE_MS;
+}
 
 function fingerprintOf(event: string, message: string, path: string | undefined): string {
   // message 截前 200 字：后半段常带随机 id/时间戳，会破坏去重
@@ -63,7 +72,7 @@ export async function reportError(input: ReportInput): Promise<void> {
   const fingerprint = fingerprintOf(event, message, path);
   const now = Date.now();
   const last = lastWriteAt.get(fingerprint);
-  if (last !== undefined && now - last < THROTTLE_MS) return;
+  if (last !== undefined && now - last < throttleMs()) return;
   lastWriteAt.set(fingerprint, now);
 
   try {
