@@ -24,6 +24,16 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:3000';
 const OUT_DIR = path.join('e2e', '.auth');
 const OUT_FILE = path.join(OUT_DIR, 'state.json');
 
+// 这个脚本不像 test:e2e 那样会自己拉起 dev server（Playwright webServer 只管测试进程），
+// 它默认 3000 端口上已经有服务。先探一下，别让人对着半屏堆栈猜原因。
+try {
+  await fetch(BASE_URL, { signal: AbortSignal.timeout(3000) });
+} catch {
+  console.error(`❌ ${BASE_URL} 连不上 —— dev server 没开。`);
+  console.error('   先在另一个终端跑 npm run dev，等它打印 Ready，再回来跑本命令。');
+  process.exit(1);
+}
+
 const browser = await chromium.launch({ headless: false });
 const context = await browser.newContext();
 const page = await context.newPage();
