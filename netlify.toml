@@ -18,3 +18,8 @@
 #    加进这里的必须是「本来就写死在代码/文档里的公开值」。
 [build.environment]
   SECRETS_SCAN_OMIT_KEYS = "EMBED_BASE_URL,EMBED_MODEL,LLM_BASE_URL,LLM_MODEL,RERANK_MODEL"
+  # W12 加了 @playwright/test 之后必须设这个：
+  # playwright 的安装脚本会默认下载 chromium/firefox/webkit（几百 MB），
+  # 而构建只需要 vitest / next build，E2E 从不在构建机上跑。
+  # 不设这个，构建时间会从 2 分钟变成十几分钟，甚至直接超时失败。
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1"
