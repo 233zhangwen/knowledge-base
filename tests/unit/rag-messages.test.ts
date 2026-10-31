@@ -20,6 +20,7 @@ function chunk(over: Partial<RetrievedChunk> = {}): RetrievedChunk {
     documentId: 'd1',
     documentTitle: '员工手册',
     similarity: 0.9,
+    suspicious: false,
     ...over,
   };
 }
@@ -50,8 +51,10 @@ describe('buildRagMessages · 引用编号', () => {
     ]);
     const userContent = messages.at(-1)!.content;
 
-    expect(userContent).toContain('[1] （来自文档《手册A》第 1 段）');
-    expect(userContent).toContain('[2] （来自文档《手册B》第 5 段）');
+    expect(userContent).toContain('<<<DOC [1] 《手册A》第 1 段>>>');
+    expect(userContent).toContain('<<<DOC [2] 《手册B》第 5 段>>>');
+    // 每个资料块都必须闭合：开了不关，模型会把后面的问题也当成资料
+    expect(userContent.match(/<<<END DOC>>>/g)).toHaveLength(2);
     // citationRule 的 {max} 必须等于实际条数
     expect(messages[0].content).toContain('[1] 到 [2]');
   });
@@ -76,7 +79,7 @@ describe('buildRagMessages · 引用编号', () => {
   it('规则编号是动态的：有引用规则时编号连续、不重复', () => {
     const system = buildRagMessages('年假几天', [chunk()])[0].content;
     const numbers = [...system.matchAll(/^(\d+)\. /gm)].map((m) => Number(m[1]));
-    expect(numbers).toEqual([1, 2, 3, 4, 5]); // 4 条固定规则 + 1 条引用规则
+    expect(numbers).toEqual([1, 2, 3, 4, 5, 6]); // 5 条固定规则（W14 加了围栏那条）+ 1 条引用规则
   });
 });
 
