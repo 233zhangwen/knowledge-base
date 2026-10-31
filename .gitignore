@@ -13,6 +13,15 @@
 # testing
 /coverage
 
+# Playwright（W12）：产物 + 登录态
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+# ⚠️ e2e/.auth/state.json 是**真凭证**（AUTH_SECRET 加密的会话 cookie），
+#    拿到就能冒充登录。绝不入库、绝不外传。
+/e2e/.auth/
+
 # next.js
 /.next/
 /out/

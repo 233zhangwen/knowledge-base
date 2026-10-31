@@ -7,6 +7,12 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run tests/unit",
+    "test:unit": "vitest run tests/unit",
+    "test:watch": "vitest tests/unit",
+    "test:db": "vitest run tests/db",
+    "test:e2e": "playwright test",
+    "e2e:auth": "node scripts/save-auth.mjs",
     "verify:stream": "node --experimental-transform-types scripts/verify-stream-protocol.mts",
     "verify:rag": "node --experimental-transform-types scripts/verify-rag-e2e.mts"
   },
@@ -23,6 +29,7 @@
     "unpdf": "^1.9.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.64.1",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -32,6 +39,7 @@
     "pg": "^8.23.1",
     "prisma": "^7.10.1",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^5.0.5"
   }
 }

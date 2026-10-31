@@ -41,7 +41,12 @@ export function KbCard({
           <div className="flex items-start justify-between gap-4">
             <div className="min-w-0">
               {/* min-w-0 + truncate 是给长名字用的：否则它会把右边的按钮挤出卡片 */}
-              <Link href={`/kb/${id}`} className="font-medium hover:underline">
+              <Link
+                href={`/kb/${id}`}
+                data-testid="kb-link"
+                data-kb-name={name}
+                className="font-medium hover:underline"
+              >
                 {name}
               </Link>
               {description ? (

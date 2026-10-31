@@ -262,6 +262,7 @@ export function ChatPanel({
       ) : (
         <>
           <textarea
+            data-testid="chat-input"
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
             maxLength={MAX_QUESTION_LENGTH}
@@ -284,6 +285,7 @@ export function ChatPanel({
             {isStreaming ? (
               <button
                 type="button"
+                data-testid="chat-stop"
                 onClick={() => abort?.()}
                 className="rounded-lg border px-4 py-2 text-sm hover:bg-zinc-50"
               >
@@ -292,6 +294,7 @@ export function ChatPanel({
             ) : (
               <button
                 type="button"
+                data-testid="chat-send"
                 onClick={() => void ask()}
                 disabled={!question.trim()}
                 className="rounded-lg bg-zinc-900 px-4 py-2 text-sm text-white disabled:bg-zinc-300"
@@ -349,12 +352,15 @@ function MessageView({
               streaming=false，错误路径 dropStreamingSlot 同理），不会残留。
               高度变化会被滚动跟随自然处理 —— 提示本身在视口内。 */}
           {streaming && toolHint && !message.content ? (
-            <p className="animate-pulse text-xs text-zinc-500">
+            <p data-testid="tool-hint" className="animate-pulse text-xs text-zinc-500">
               正在检索：{toolHint}
             </p>
           ) : (
             /* pre-wrap：模型输出里的换行要原样呈现，否则段落糊成一团 */
-            <p className="whitespace-pre-wrap text-sm leading-7">
+            <p
+              data-testid={`message-${isUser ? 'user' : 'assistant'}`}
+              className="whitespace-pre-wrap text-sm leading-7"
+            >
               {message.content}
               {/* 光标只在正在生成的那条末尾；历史消息一律不多一个字符 ——
                   打字机重放属于 Out of Scope，历史就是静态文本 */}
@@ -396,7 +402,10 @@ function Citations({ citations }: { citations: Citation[] }) {
 
   return (
     <details className="mt-2 rounded-lg border border-dashed border-zinc-300">
-      <summary className="cursor-pointer select-none px-3 py-2 text-xs text-zinc-500 hover:text-zinc-800">
+      <summary
+        data-testid="citations-summary"
+        className="cursor-pointer select-none px-3 py-2 text-xs text-zinc-500 hover:text-zinc-800"
+      >
         引用 {citations.length} 段（来自 {docTitles.join('、')}）
       </summary>
       <ul className="flex flex-col gap-2 px-3 pb-3">

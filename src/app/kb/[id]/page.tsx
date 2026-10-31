@@ -2,6 +2,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 
 import type { Citation } from '@/lib/chat-protocol';
+import { conversationTimeParts } from '@/lib/conversation-time';
 import { ConversationNotFound, loadConversationMessages, listConversations } from '@/lib/history';
 import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
@@ -235,6 +236,8 @@ const STATUS_LABEL: Record<string, string> = {
 function StatusChip({ status }: { status: string }) {
   return (
     <span
+      data-testid="doc-status"
+      data-status={status}
       className={`shrink-0 rounded px-2 py-0.5 text-xs ${
         STATUS_STYLE[status] ?? 'bg-zinc-100 text-zinc-600'
       }`}
@@ -255,26 +258,9 @@ const DATE_FORMATTER = new Intl.DateTimeFormat('zh-CN', {
 
 /**
  * 会话侧栏的相对时间 + 分组标签（2026-10-29 A+C 改版）。
- *
- * 必须在服务端算成字符串再传下去：客户端组件里 new Date() 对比"现在"
- * 会在服务端 HTML 和客户端首渲染之间产生 hydration 警告（两边时钟不同），
- * 和当年 updatedAtText 服务端格式化是同一个理由。
- *
- * group 和 timeText 用同一个值：今天/昨天天然唯一，更早的天用"M 月 D 日"
- * 当分组头也唯一 —— 分组直接按标签合并即可，不需要额外 id。
+ * W12 起逻辑搬到 src/lib/conversation-time.ts —— 抽出去是为了能单测
+ * （4 个分支，改坏了不报错、只写错分组头）。调用方式不变。
  */
-function conversationTimeParts(updatedAt: Date, now: Date): { timeText: string; group: string } {
-  const startOfDay = (d: Date) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-  const diffDays = Math.round((startOfDay(now) - startOfDay(updatedAt)) / 86_400_000);
-
-  if (diffDays <= 0) return { timeText: '今天', group: '今天' };
-  if (diffDays === 1) return { timeText: '昨天', group: '昨天' };
-
-  const md = `${updatedAt.getMonth() + 1} 月 ${updatedAt.getDate()} 日`;
-  if (updatedAt.getFullYear() === now.getFullYear()) return { timeText: md, group: md };
-  const full = `${updatedAt.getFullYear()} 年 ${md}`;
-  return { timeText: full, group: full };
-}
 
 function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;

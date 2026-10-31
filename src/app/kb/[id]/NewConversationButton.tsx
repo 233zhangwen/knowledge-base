@@ -29,6 +29,7 @@ export function NewConversationButton({
   return (
     <button
       type="button"
+      data-testid="new-conversation"
       onClick={() => router.push(`/kb/${kbId}?n=${Date.now()}`, { scroll: false })}
       className={`shrink-0 whitespace-nowrap rounded-lg border px-3 py-2 text-center text-sm ${
         active ? 'border-zinc-900 bg-zinc-900 text-white' : 'hover:bg-zinc-50'

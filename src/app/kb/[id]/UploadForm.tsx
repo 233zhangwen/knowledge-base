@@ -80,6 +80,7 @@ export function UploadForm({ kbId }: { kbId: string }) {
         </label>
         <input
           id="document-file"
+          data-testid="file-input"
           name="file"
           type="file"
           accept={ACCEPT_ATTR}
@@ -102,6 +103,7 @@ export function UploadForm({ kbId }: { kbId: string }) {
 
       <button
         type="submit"
+        data-testid="upload-submit"
         disabled={isPending}
         className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
       >

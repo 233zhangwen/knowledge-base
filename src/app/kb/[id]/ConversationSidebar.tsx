@@ -209,6 +209,8 @@ function ConversationLink({
     <li className="group/row relative w-full">
       <Link
         href={`/kb/${kbId}?c=${item.id}`}
+        data-testid="conversation-link"
+        data-conversation-id={item.id}
         onClick={onNavigate}
         className={`block min-w-0 flex-1 rounded-lg py-1.5 pl-2.5 pr-7 text-xs ${
           active ? 'bg-zinc-100' : 'hover:bg-zinc-50'

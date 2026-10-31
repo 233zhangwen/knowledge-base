@@ -41,6 +41,7 @@ export function CreateKbForm() {
         </label>
         <input
           id="kb-name"
+          data-testid="kb-name-input"
           name="name"
           value={fields.name}
           onChange={(e) => setFields((f) => ({ ...f, name: e.target.value }))}
@@ -70,6 +71,7 @@ export function CreateKbForm() {
 
       <button
         type="submit"
+        data-testid="kb-create-submit"
         disabled={isPending}
         className="self-start rounded-md bg-zinc-900 px-4 py-2 text-sm font-medium text-white hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
       >

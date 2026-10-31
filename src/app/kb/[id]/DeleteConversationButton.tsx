@@ -83,6 +83,7 @@ export function DeleteConversationButton({
         <>
           <button
             type="submit"
+            data-testid="delete-conversation-confirm"
             disabled={isPending}
             className="rounded bg-white px-1.5 py-1 text-xs text-red-600 hover:bg-red-50 disabled:opacity-60"
           >
@@ -100,6 +101,7 @@ export function DeleteConversationButton({
       ) : (
         <button
           type="button"
+          data-testid="delete-conversation"
           onClick={() => setConfirming(true)}
           aria-label="删除会话"
           title="删除"
