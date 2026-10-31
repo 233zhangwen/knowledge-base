@@ -47,6 +47,10 @@ test.describe.serial('知识库核心链路', () => {
     const kbLink = page.getByTestId('kb-link').filter({ hasText: KB_NAME });
     await expect(kbLink).toBeVisible();
     await kbLink.click();
+    // ⚠️ 不能紧跟 click 写 page.url()：Next 软导航是异步的，click 返回时 URL
+    // 往往还没 commit，读到的是旧地址 /kb（列表页）。链路 2/3 的 goto 因此全跳错页
+    // ——W12 实测踩坑。等 URL 变成 "/kb/<id>" 再捕获（列表页是裸 /kb，不含二级段）。
+    await expect(page).toHaveURL(/\/kb\/[^/?#]+/);
     kbUrl = page.url();
 
     await page.getByTestId('file-input').setInputFiles(FIXTURE_PATH);
