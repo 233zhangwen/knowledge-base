@@ -79,7 +79,8 @@ flowchart LR
 |---|---|---|
 | 切片 | 目标 500 字 / 重叠 80 | `src/lib/chunk.ts` |
 | 向量 | bge-m3，1024 维，cosine | `src/lib/embedding.ts` |
-| 召回 | TOP_K = 5（工具 execute 内） | `src/lib/retrieve.ts` |
+| 召回 | 两段式：粗排 RECALL_K = 10 → 精排 TOP_K = 5 | `src/lib/retrieve.ts` |
+| 精排 | bge-reranker-v2-m3（cross-encoder），3s 超时即降级 | `src/lib/rerank.ts` |
 | Agent 循环 | MAX_STEPS = 5（防失控封顶） | `src/lib/agent-llm.ts` |
 | 上下文历史 | 最近 3 轮（6 条），倒序取再反转 | `src/lib/history.ts` |
 | 采样 | temperature = 0 + thinking disabled（线上与评测同源） | `src/lib/agent-prompt.json` |
@@ -165,9 +166,27 @@ node scripts/eval-agent.mjs         # Agent 路径：检索层 recall + 答案�
 node scripts/eval.mjs               # 旧路径对照（必检索架构，已退役，留作基线）
 ```
 
+> ⚠️ **以下两组基线在 2026-10-31 扩库后作废**（库从 9 块变 40 块，候选池从 9 变 40，不可比）。
+> 保留在此只是为了记录扩库前的水平，不要拿新数字和它们比。
+
 **基线（2026-10-26，必检索架构）**：recall@1 = 0.740，recall@3 = 0.960，recall@5 = 1.000；答案层 25/25。
 
 **Agent 路径（2026-10-29，W11 退役前回归）**：recall@1 = 0.740，recall@3 = 0.960，recall@5 = 1.000；答案层 **25/25 零退化**；平均 1.08 次检索/问（含自发二次检索 case）。两次运行间 recall@3 在 0.960~1.000 间波动（#23 在测量噪声边界跳变）——temperature=0 稳住命中数，稳不住一切。Agent 时代的成本账如实记录：**知识类问题更贵**（in ≈2.2x：工具 schema + 多步消息重发；out ≈5.5x），收益在闲聊（零检索）与多跳（旧架构做不到）。
+
+**W15 扩库 + rerank（2026-10-31）**：库从 9 块扩到 40 块（5 篇互相咬合的制度文档，含 2024 旧版手册），
+用例从 25 条扩到 45 条（15 条带负例块登记）。新环境下的纯向量基线：recall@1 = 0.367 / @3 = 0.811 / @5 = 0.911
+（**与旧基线不可比**——候选池从 9 变 40，是环境变难不是退化）。四档对照结果：
+
+| 组 | MRR@5 | ΔMRR | p95 | Δp95 | 裁决 |
+|---|---|---|---|---|---|
+| V5（纯向量） | 0.588 | — | 107ms | — | — |
+| **R10（上线）** | **0.706** | **+0.119** | 461ms | +354ms | ✅ 两条判据都过 |
+| R20 | 0.723 | +0.135 | 666ms | +559ms | 延迟超标 |
+| R50 | 0.723 | +0.135 | 971ms | +864ms | 与 R20 收益相同，纯浪费 |
+
+答案层 42/45 → **44/45**。最有价值的一条不是指标，是 **c14**：没有 rerank 时它答
+「S 档最多 5%」——那是 2024 版手册的数字，系统忠实地照抄了一份已废止的文件，且自己不知道。
+完整记录见 [`eval/rerank-results.md`](eval/rerank-results.md)。
 
 两轮调优（完整记录见 [`eval/RESULTS.md`](eval/RESULTS.md)）：
 
@@ -263,7 +282,8 @@ src/
     ├── parse.ts               # unpdf 动态导入（ADR-7）
     ├── chunk.ts               # 500/80 切片
     ├── embedding.ts           # bge-m3 / 1024 维
-    ├── retrieve.ts            # pgvector 余弦检索，TOP_K（工具 execute 内调用）
+    ├── retrieve.ts            # 两段式检索：粗排 RECALL_K → 精排 TOP_K（工具 execute 内调用）
+    ├── rerank.ts              # cross-encoder 精排 + 降级（永不抛异常）
     ├── agent-llm.ts           # Agent 工具循环：AI SDK fullStream → 四类事件（ADR-3）
     ├── agent-prompt.json      # Agent prompt 单一来源（身份/检索纪律/全局编号/禁 markdown）
     ├── llm.ts                 # 原生 fetch SSE（旧路径，ADR-3 前身，评测对照仍用）
@@ -280,7 +300,7 @@ docs/                          # 各周验收 spec + 部署手册
 
 ## Out of Scope（显式不做）
 
-团队协作与共享、在线文档编辑、外部数据源同步（网页/飞书/Notion）、多文档联合推理的显式规划（多跳目前靠模型自发多步检索）、计费配额、移动端原生适配、rerank 精排（已留接口位置）、大文件直传（签名 URL 方案）、prompt cache（国内 provider 支持不稳）。
+团队协作与共享、在线文档编辑、外部数据源同步（网页/飞书/Notion）、多文档联合推理的显式规划（多跳目前靠模型自发多步检索）、计费配额、移动端原生适配、大文件直传（签名 URL 方案）、prompt cache（国内 provider 支持不稳）。
 
 这些不是没想到，是**评估后决定不进 MVP**——每一条展开都会显著增加攻击面或复杂度，而当前的核心命题是把 RAG 主链路和评测方法做扎实。
 
