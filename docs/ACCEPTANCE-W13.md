@@ -220,6 +220,22 @@ latencyMs    Int?
 - ② **db 也每次跑**：需要 `DATABASE_URL` secret，且每次 push 都往生产 Neon 写测试数据
 - ③ **全量**（含 e2e）：覆盖最全，但 cookie 一过期流水线就红，红的原因与代码无关
 
+## 9. 实施记录（2026-10-31 当天完成）
+
+| 组 | 状态 | 证据 |
+|---|---|---|
+| A CI | ✅ | `ci.yml` / `manual.yml` 落地；首次 CI 实测**红在 tsc**，根因是 `next-env.d.ts` 与 `.next/types` 都在 gitignore 里、CI 干净检出缺它们 → 补 `npx next typegen`；同时把 CI Node 从 24 改成 **22**（对齐 Netlify `NETLIFY_NODE_VERSION`，"验的和跑的不是同一套"就没意义） |
+| B 日志 | ✅ | `src/lib/log.ts` + 11 条单测（分级/形状/脱敏/截断/指纹）；单测总数 47 → **58** |
+| C 错误 | ✅ | `ErrorLog` + `/api/errors` + error.tsx sendBeacon；`/admin` 未配置或邮箱不匹配 → 404 |
+| D 成本 | ✅ | `Message` 四列 + finish 事件写入；`/admin` 两条 `$queryRaw` 已直连真库跑通（历史 48 条回答，token 列为 null —— 新列尚无数据，符合预期） |
+| E 回归 | 部分 | tsc 0；eslint **0 error**（修了两条历史 error：`DeleteConversationButton` 的 setState-in-effect → ref；`/admin` 的渲染期 `new Date()` → 移出组件体）；`next build` 假库本地真跑通（全路由 ƒ dynamic，验证了 A3 的假设）；`test:unit` 58 绿；`test:db` **9 绿**（新增 3 条去重/节流） |
+
+**反证进度**：
+- R1 ✅ 首次 CI 真的红了（tsc），证明流水线不是装饰 —— 虽然红的原因是我自己漏了 typegen。
+- R2 ✅ 单测覆盖：`LOG_LEVEL=error` 时 info/warn 全部静默。
+- R3 ✅ DB 测试：节流关闭时同错 3 次 → 1 行 count=3；节流开启 → count=1；不同 message 不合并。事后查残留 0 行。
+- R4 ⏳ 需人工：去掉 `ADMIN_EMAIL` 访问 `/admin` 应 404。
+
 ## 修订记录
 
 | 日期 | 版本 | 变更 |
