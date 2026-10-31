@@ -84,6 +84,24 @@ flowchart LR
 
 流协议：`{"v":2,...}` 头行 → 事件行（tool 状态 / citations）→ **文本起始哨兵 `\u0001`** → 纯文本增量；错误走 `\u0000` 哨兵。边界全部显式声明（ADR-9），定义与解析器同居 `chat-protocol.ts` 成对变化。
 
+## 测试
+
+四层，按"改完多久知道坏了"排序：
+
+```bash
+npm run test:unit                # 纯函数单测（vitest，不连库，<10s）
+RUN_DB_TESTS=1 npm run test:db   # DB 集成测试（打真实 Neon，默认 skip）
+npm run e2e:auth                 # 一次性：弹出浏览器手工登录 GitHub，保存 E2E 登录态
+npm run test:e2e                 # Playwright：建库→上传→提问→引用 / 闲聊不检索 / 会话删除
+node scripts/verify-stream-protocol.mts   # 零依赖协议验尸（装不上依赖时也能跑）
+```
+
+**为什么不只写 E2E**：E2E 每次要起服务、等编译、等 LLM，一次几分钟；而切片、协议、时间分组这类纯逻辑改坏了**不会报错**，只有靠快的测试盯。所以分了两层——纯逻辑用单测（秒级），只有"必须真浏览器才能证明"的才进 E2E。
+
+**为什么协议用例有两个 runner**：`scripts/protocol-cases.mts` 是唯一数据源，`verify-stream-protocol.mts`（零依赖）和 `tests/unit/protocol.test.ts`（vitest）都 import 它。本仓库踩过两次 `npm install` 失败——依赖装不上时，最需要验尸的时刻不能没工具。
+
+**注意**：`e2e/.auth/state.json` 是**真凭证**（AUTH_SECRET 加密的会话 cookie），已 gitignore，过期后重跑 `npm run e2e:auth`。E2E 会留下 `E2E 知识库 xxx` 前缀的测试库，跑完在页面上删掉即可。
+
 ## 评测
 
 不凭感觉调参。W6 建了一套 25 条的评测集（覆盖 12 个章节 / 9 个切片，含改述与跨片段计算 case），检索层与答案层分开测：
