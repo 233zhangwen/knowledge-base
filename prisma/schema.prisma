@@ -120,6 +120,15 @@ model Document {
    */
   content String?
 
+  /**
+   * W14：入库时扫到疑似指令性文本（「忽略以上指令」「system prompt」等）的时间戳。
+   *
+   * 只标记、不阻断 —— 安全教材和 AI 论文天然含这些句子，拒收会误伤真实文档。
+   * 标记的用途是让检索结果在喂给模型时多一行提醒（见 src/lib/untrusted.ts 的 fenceChunk），
+   * 以及给 /admin 留一条审计线索。NULL = 未发现可疑文本。
+   */
+  suspiciousAt DateTime?
+
   chunks Chunk[]
 }
 

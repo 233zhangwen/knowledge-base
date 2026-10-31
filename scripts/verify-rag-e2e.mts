@@ -104,6 +104,7 @@ async function main() {
     documentTitle: r.title,
     similarity: Number(r.similarity),
     content: r.content,
+    suspicious: false,
   }));
 
   console.log(`知识库 ${kbId}\n问题：${question}\n`);

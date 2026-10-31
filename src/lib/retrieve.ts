@@ -38,6 +38,8 @@ export type RetrievedChunk = {
   documentTitle: string;
   /** 余弦相似度，0~1，越大越相似。仅用于日志观测，不用于裁断是否回答。 */
   similarity: number;
+  /** W14：该文档入库时被标记为含疑似指令性文本（只标记不阻断，见 untrusted.ts） */
+  suspicious: boolean;
 };
 
 type Row = {
@@ -47,6 +49,7 @@ type Row = {
   documentId: string;
   title: string;
   similarity: number;
+  suspicious: boolean;
 };
 
 export async function retrieve(kbId: string, question: string): Promise<RetrievedChunk[]> {
@@ -61,6 +64,7 @@ export async function retrieve(kbId: string, question: string): Promise<Retrieve
            c."chunkIndex",
            d.id as "documentId",
            d.title,
+           (d."suspiciousAt" is not null) as suspicious,
            1 - (c.embedding <=> ${vectorLiteral}::vector) as similarity
     from "Chunk" c
     join "Document" d on d.id = c."documentId"
@@ -77,6 +81,7 @@ export async function retrieve(kbId: string, question: string): Promise<Retrieve
     documentTitle: r.title,
     // pg 的 numeric/double precision 经 Node 驱动回来是字符串，必须显式转 Number
     similarity: Number(r.similarity),
+    suspicious: Boolean(r.suspicious),
   }));
 
   /**

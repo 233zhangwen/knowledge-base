@@ -5,6 +5,7 @@
  * 垃圾进来，再好的 embedding 也救不回来。
  */
 import type { SourceType } from './file-types';
+import { stripInvisible } from './untrusted';
 
 /**
  * 解出来的文本类型由扩展名决定，不看 file.type。
@@ -68,9 +69,13 @@ async function extractPdfText(bytes: Uint8Array): Promise<string> {
  * 一堆连续空行意味着喂给模型的 token 全是废料 —— 白花钱，还挤占上下文窗口。
  */
 function normalize(text: string): string {
-  return text
-    .replace(/\r\n?/g, '\n') // Windows/Mac 换行统一成 \n
-    .replace(/[ \t]+\n/g, '\n') // 行尾空格没意义
-    .replace(/\n{3,}/g, '\n\n') // 连续空行压成一个
-    .trim();
+  return (
+    stripInvisible(text)
+      .replace(/\r\n?/g, '\n') // Windows/Mac 换行统一成 \n
+      // 其它控制字符（保留 \n \t）：文档里出现它们本身是异常，但删了安全
+      .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
+      .replace(/[ \t]+\n/g, '\n') // 行尾空格没意义
+      .replace(/\n{3,}/g, '\n\n') // 连续空行压成一个
+      .trim()
+  );
 }

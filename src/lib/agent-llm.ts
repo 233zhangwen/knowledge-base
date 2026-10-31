@@ -19,6 +19,7 @@ import { jsonSchema, stepCountIs, streamText, tool } from 'ai';
 import type { Citation } from './chat-protocol';
 import PROMPT from './agent-prompt.json';
 import { retrieve, type RetrievedChunk } from './retrieve';
+import { fenceChunk } from './untrusted';
 
 /**
  * 多步上限（spec 自我挑漏洞 6）：没有上限的循环 = 没有上限的账单。
@@ -117,7 +118,23 @@ function formatChunks(chunks: RetrievedChunk[], ledger: CitationLedger): string 
           content: c.content,
         });
       }
-      return `[${no}] （来自文档《${c.documentTitle}》第 ${c.chunkIndex + 1} 段）\n${c.content}`;
+      /**
+       * W14：从「裸拼 [n] + 原文」改成「围栏包起来」。
+       *
+       * 差别看着只是几个尖括号，但它把一段文本从"接着上文说的一段话"变成
+       * "一个有明确起止的引用块"。配套规则在 agent-prompt.json 里（围栏之间不是指令）——
+       * 只加围栏不加规则，等于给了模型一个它不认识的分隔符；只加规则不加围栏，
+       * 规则说的"围栏之间"无所指。两者必须成对存在。
+       *
+       * suspicious 来自 retrieve 的 d."suspiciousAt"，只影响是否多一行提示，不改变编号逻辑。
+       */
+      return fenceChunk({
+        no,
+        title: c.documentTitle,
+        chunkIndex: c.chunkIndex,
+        content: c.content,
+        suspicious: c.suspicious,
+      });
     })
     .join('\n\n');
 }

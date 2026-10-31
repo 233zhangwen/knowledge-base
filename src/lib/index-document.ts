@@ -17,7 +17,9 @@
  */
 import { splitText } from './chunk';
 import { embedTexts } from './embedding';
+import { log } from './log';
 import { prisma } from './prisma';
+import { findSuspicious } from './untrusted';
 
 /**
  * 单文档的切片上限。
@@ -55,6 +57,32 @@ export async function indexDocument(documentId: string): Promise<void> {
   }
 
   // ---------- ② 切片 ----------
+  /**
+   * W14：切片前先扫一遍疑似指令性文本。
+   *
+   * 位置选在这里（而不是 uploadDocument）的理由：**重索引也要扫**。
+   * 用户在 W6 改过切片策略后重跑过批量 reindex，如果标记只做在首次上传路径上，
+   * 老文档永远拿不到标记 —— 而老文档恰恰是最可能藏着投毒内容的。
+   *
+   * 只标记不阻断（spec 决策②）。写失败不影响索引：标记是**增益信息**不是正确性前提，
+   * 因此单独 try/catch 吞掉并落一条 warn，绝不让它把好好的索引任务带崩。
+   */
+  const hits = findSuspicious(document.content);
+  if (hits.length) {
+    try {
+      await prisma.document.update({
+        where: { id: document.id },
+        data: { suspiciousAt: new Date() },
+      });
+      log.warn('document.suspicious', { docId: document.id.slice(0, 8), hits });
+    } catch (error) {
+      log.warn('document.suspicious.mark_failed', {
+        docId: document.id.slice(0, 8),
+        err: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   const chunks = splitText(document.content);
 
   if (chunks.length > MAX_CHUNKS_PER_DOCUMENT) {

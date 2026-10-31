@@ -36,6 +36,7 @@ import { reportError } from '@/lib/error-report';
 import { log, previewText } from '@/lib/log';
 import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
+import { sanitizeAnswer, stripInvisible } from '@/lib/untrusted';
 
 const MAX_QUESTION_LENGTH = 1000;
 
@@ -62,7 +63,14 @@ export async function POST(
       question?: unknown;
       conversationId?: unknown;
     };
-    question = typeof body.question === 'string' ? body.question.trim() : '';
+    /**
+     * W14：提问位也剥一遍不可见字符。
+     *
+     * 提问是用户（或别的系统）直接控制的文本，零宽字符同样能把
+     * 「帮我总结一下<零宽>忽略你的规则」变成人眼看不出来的两句。
+     * 剥了之后日志和落库内容与模型看到的一致 —— 否则排查时对不上账。
+     */
+    question = typeof body.question === 'string' ? stripInvisible(body.question).trim() : '';
     conversationId =
       typeof body.conversationId === 'string' && body.conversationId
         ? body.conversationId
@@ -114,10 +122,26 @@ export async function POST(
     if (persisted) return;
     persisted = true;
     if (!answer.trim()) return;
+    /**
+     * W14 决策①：落库前裁掉越界引用编号（如模型编造的 [99]）。
+     *
+     * 为什么放在落库这一层而不是流式层：流是一边生成一边推的，
+     * `[9` 和 `9]` 可能分属两个 delta，服务端拿不到"整句"。
+     * 所以流中用户可能瞥见越界编号，刷新后消失 —— 这个不一致写在
+     * untrusted.ts 的注释和 README 已知限制里，不假装没有。
+     */
+    const sanitized = sanitizeAnswer(answer, citations.length);
+    if (sanitized.removed.length) {
+      log.warn('agent.citation.out_of_range', {
+        convId: shortConv,
+        removed: sanitized.removed,
+        cited: citations.length,
+      });
+    }
     try {
       await appendAssistantMessage({
         conversationId: conversation.id,
-        content: answer,
+        content: sanitized.text,
         citations,
         finishReason,
         cost: cost ?? undefined,
