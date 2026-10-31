@@ -67,17 +67,23 @@ export function buildRagMessages(
    * ⚠️ 文本全部来自 rag-prompt.json（W6）：评测脚本读同一份文件拼 prompt，
    * 所以"改 prompt"这个动作在线上和评测里是同一个改动。写死在这里的话，
    * C4-b 会拿线上新 prompt 的答案去和旧 prompt 的评测结果对比，结论无效。
-   * replace 一律传函数 —— 否则 chunk 内容里若出现 "{question}" 这种字面量，
-   * 会被二次替换（占位符注入）。
+   *
+   * ⚠️ 占位符必须**一遍扫完**（fill），不能 chained replace：
+   * 先用整段 chunk 内容替换 {content}，之后再 replace('{question}') 时，
+   * 若 chunk 里正好有 "{question}" 字面量，被替换掉的是**它**（它在字符串里更靠前），
+   * 用户真正的问题反而留在模板里 —— 这就是占位符注入。
+   * W12 写单测时抓到的真 bug（当时注释还写着"传函数就能防"，传函数只防 $& 特殊替换，
+   * 防不住位置替换）。fill 的做法：一次正则扫模板，替换进去的内容不会被二次扫描。
    */
   const context = chunks.length
     ? chunks
         .map((c, i) =>
-          PROMPT.contextItem
-            .replace('{no}', () => String(i + 1))
-            .replace('{title}', () => c.documentTitle)
-            .replace('{page}', () => String(c.chunkIndex + 1))
-            .replace('{content}', () => c.content),
+          fill(PROMPT.contextItem, {
+            no: String(i + 1),
+            title: c.documentTitle,
+            page: String(c.chunkIndex + 1),
+            content: c.content,
+          }),
         )
         .join('\n\n')
     : // 一个片段都没召回时也要把话说死，否则模型面对空上下文会自行发挥
@@ -92,7 +98,7 @@ export function buildRagMessages(
   const rules = [
     ...PROMPT.system.rules,
     chunks.length
-      ? PROMPT.system.citationRule.replace('{max}', () => String(chunks.length))
+      ? fill(PROMPT.system.citationRule, { max: String(chunks.length) })
       : PROMPT.system.noContextRule,
   ];
   if (history.length) rules.push(PROMPT.system.historyRule);
@@ -108,11 +114,25 @@ export function buildRagMessages(
     ...history,
     {
       role: 'user',
-      content: PROMPT.userPrefix
-        .replace('{context}', () => context)
-        .replace('{question}', () => question),
+      content: fill(PROMPT.userPrefix, { context, question }),
     },
   ];
+}
+
+/**
+ * 一次扫完整段模板，把 {key} 换成对应值。
+ *
+ * 与 chained replace 的关键区别：**替换进去的内容不会被再次扫描**。
+ * 这是防占位符注入的核心 —— RAG 的模板里会插入用户可控的文档内容，
+ * 那些内容里出现 "{question}" 是完全可能的（这项目自己的 spec 文件就写满了这种字样）。
+ *
+ * 未定义的键原样保留（而不是替换成空串）：漏传时应该能一眼看出模板没填上，
+ * 而不是悄悄生成一句缺词的话。
+ */
+function fill(template: string, values: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (whole, key: string) =>
+    Object.prototype.hasOwnProperty.call(values, key) ? values[key] : whole,
+  );
 }
 
 /**
