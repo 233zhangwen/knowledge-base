@@ -76,7 +76,7 @@ async function loadAdminData() {
    * 用 $queryRaw 而不是 groupBy：要算 percentile_cont（P95），Prisma 的聚合 API 不支持。
    * 参数用 ${since} 走参数化占位符，不是字符串拼接。
    */
-  const [errors, totals, byKb] = await Promise.all([
+  const [errors, totals, byKb, degraded] = await Promise.all([
     prisma.errorLog.findMany({ orderBy: { lastSeen: 'desc' }, take: 50 }),
     prisma.$queryRaw<CostTotal[]>`
       select count(*)::int as answers,
@@ -102,9 +102,28 @@ async function loadAdminData() {
       order by (sum(coalesce(m."inputTokens", 0)) + sum(coalesce(m."outputTokens", 0))) desc
       limit 5
     `,
+    /**
+     * W15：rerank 降级次数（近 24h）。
+     *
+     * 为什么这一格必须有：降级是**静默**的 —— 用户拿到的答案仍然正常
+     * （落回纯向量 top5），只是质量悄悄退了一档。没有任何人会在界面上看到异常。
+     * 如果一个降级路径从来没有人观测，那它在工程上等于不存在：
+     * rerank 服务坏了三个月，也不会有人知道。
+     *
+     * 读 ErrorLog 而不是新开一张表：降级走的是 reportError（level=warn），
+     * 指纹去重 + count 累加已经够回答"最近有没有在降级、多不多"。
+     * ⚠️ 已知偏差：reportError 有 60s 进程内节流，所以这个数是**下界**，
+     * 不能当精确调用次数用 —— 它回答的是"有没有事"，不是"精确多少次"。
+     */
+    prisma.$queryRaw<{ n: number }[]>`
+      select coalesce(sum(count), 0)::int as n
+      from "ErrorLog"
+      where event = 'rerank.degraded'
+        and "lastSeen" >= ${new Date(now - 24 * 3600 * 1000)}
+    `,
   ]);
 
-  return { errors, totals, byKb, generatedAt };
+  return { errors, totals, byKb, degraded: degraded[0]?.n ?? 0, generatedAt };
 }
 
 export default async function AdminPage() {
@@ -117,7 +136,7 @@ export default async function AdminPage() {
     notFound();
   }
 
-  const { errors, totals, byKb, generatedAt } = await loadAdminData();
+  const { errors, totals, byKb, degraded, generatedAt } = await loadAdminData();
 
   const t = totals[0] ?? {
     answers: 0,
@@ -148,6 +167,7 @@ export default async function AdminPage() {
           <Stat label="平均步数" value={t.avg_steps === null ? '—' : String(t.avg_steps)} />
           <Stat label="平均延迟" value={t.avg_ms === null ? '—' : `${t.avg_ms} ms`} />
           <Stat label="P95 延迟" value={t.p95_ms === null ? '—' : `${t.p95_ms} ms`} />
+          <Stat label="rerank 降级（24h）" value={degraded === 0 ? '0' : String(degraded)} />
         </dl>
         <p className="text-xs text-zinc-500">
           估算成本：
