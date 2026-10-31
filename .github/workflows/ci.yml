@@ -36,7 +36,10 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          # ⚠️ 必须是 22：Netlify 那边的 NETLIFY_NODE_VERSION=22。
+          # 用 24 跑 CI 等于"验的和真正跑的不是同一套"—— 构建在 24 过、
+          # 在 22 挂这种事，CI 存在的意义就是提前抓住它。
+          node-version: '22'
           cache: npm
 
       - run: npm ci
@@ -64,7 +67,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
+          node-version: '22' # 与生产（Netlify NETLIFY_NODE_VERSION）对齐，见 static job 的注释
           cache: npm
 
       - run: npm ci
