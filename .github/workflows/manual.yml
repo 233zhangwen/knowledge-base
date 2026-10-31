@@ -1,0 +1,116 @@
+# 手动流水线（W13 A 组）：DB 集成测试 / E2E。
+#
+# 为什么单独一个文件而不是在主流水线里加 if：
+#   这两个 job 依赖"真实而且会变"的外部状态 —— 生产 Neon 库、GitHub OAuth 的
+#   会话 cookie（会过期）。让它们在 push 时自动跑，早晚会出现"代码没改、
+#   流水线红了"的早晨，那时候你会开始怀疑测试本身，而它其实没错。
+#   门禁只放稳定可复现的东西；这两种检查作为**手动体检**。
+#
+# 用法：Actions → Manual checks → Run workflow → 勾选要跑的项。
+name: Manual checks
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_db:
+        description: '跑 DB 集成测试（会写生产库的测试行，自清理）'
+        type: boolean
+        default: false
+      run_e2e:
+        description: '跑 E2E（依赖 E2E_AUTH_STATE 这个 secret，cookie 过期需重录）'
+        type: boolean
+        default: false
+
+env:
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+jobs:
+  db:
+    name: DB 集成测试
+    if: inputs.run_db
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+      - name: 跑测试
+        env:
+          RUN_DB_TESTS: '1'
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+        run: npm run test:db
+
+  e2e:
+    name: E2E（三条核心链路）
+    if: inputs.run_e2e
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npx prisma generate
+
+      # CI 上没有浏览器，必须显式装；静态环境里没有系统依赖时 --with-deps 一并装上
+      - name: 安装 Chromium
+        run: npx playwright install --with-deps chromium
+
+      # 登录态：本地 `npm run e2e:auth` 生成的 e2e/.auth/state.json 是**真凭证**，
+      # 放在 repo secret 里（base64），不落仓库。cookie 过期就重录一次再更新 secret。
+      - name: 还原登录态
+        env:
+          E2E_AUTH_STATE: ${{ secrets.E2E_AUTH_STATE }}
+        run: |
+          if [ -z "$E2E_AUTH_STATE" ]; then
+            echo "::error::缺少 E2E_AUTH_STATE secret —— 先本地跑 npm run e2e:auth，再 base64 存进 secret"
+            exit 1
+          fi
+          mkdir -p e2e/.auth
+          echo "$E2E_AUTH_STATE" | base64 -d > e2e/.auth/state.json
+
+      # 应用要连真库、真调模型，所以这些必须是真值（E2E 不接受 mock —— 它测的就是整条链路）
+      - name: 写入环境变量
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          DIRECT_URL: ${{ secrets.DIRECT_URL }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          AUTH_GITHUB_ID: ${{ secrets.AUTH_GITHUB_ID }}
+          AUTH_GITHUB_SECRET: ${{ secrets.AUTH_GITHUB_SECRET }}
+          EMBED_API_KEY: ${{ secrets.EMBED_API_KEY }}
+          LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
+        run: |
+          cat > .env.local <<EOF
+          DATABASE_URL="$DATABASE_URL"
+          DIRECT_URL="$DIRECT_URL"
+          AUTH_SECRET="$AUTH_SECRET"
+          AUTH_URL="http://localhost:3000"
+          AUTH_GITHUB_ID="$AUTH_GITHUB_ID"
+          AUTH_GITHUB_SECRET="$AUTH_GITHUB_SECRET"
+          EMBED_API_KEY="$EMBED_API_KEY"
+          EMBED_BASE_URL="https://api.siliconflow.cn/v1"
+          EMBED_MODEL="BAAI/bge-m3"
+          LLM_API_KEY="$LLM_API_KEY"
+          LLM_BASE_URL="https://api.deepseek.com/v1"
+          LLM_MODEL="deepseek-flash"
+          STORAGE_DRIVER="db"
+          EOF
+
+      - name: 跑 E2E
+        run: npm run test:e2e
+
+      # 失败时把报告捞出来，否则 CI 上只剩一行 "1 failed"
+      - name: 上传失败报告
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7

@@ -25,7 +25,7 @@
  * 再根据有无 error 决定跳转。这个套路 RenameForm 用的同款。
  */
 import { useRouter } from 'next/navigation';
-import { useActionState, useEffect, useState } from 'react';
+import { useActionState, useEffect, useRef, useState } from 'react';
 
 import { deleteConversation, type ActionState } from './actions';
 
@@ -43,16 +43,24 @@ export function DeleteConversationButton({
     {},
   );
   const [confirming, setConfirming] = useState(false);
-  const [wasPending, setWasPending] = useState(false);
+  /**
+   * "这一轮 action 刚结束"的标记用 ref 而不是 state（W13 lint 修复）。
+   *
+   * 原来用 useState + effect 里 setState：React 的新 lint 规则会直接报
+   * `set-state-in-effect`（同步 setState 触发级联渲染）。这个标记本来就不是
+   * 用来渲染的 —— 它只是"上一次是否在 pending"的备忘，ref 才是它的正确归属。
+   * 行为等价：effect 仍然在 isPending 由 true 变 false 的那一次执行跳转。
+   */
+  const wasPendingRef = useRef(false);
   const router = useRouter();
 
   useEffect(() => {
     if (isPending) {
-      setWasPending(true);
+      wasPendingRef.current = true;
       return;
     }
-    if (!wasPending) return;
-    setWasPending(false);
+    if (!wasPendingRef.current) return;
+    wasPendingRef.current = false;
     if (state.error) return;
 
     if (active) {

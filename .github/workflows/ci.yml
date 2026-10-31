@@ -1,0 +1,81 @@
+# 主流水线（W13 A 组，决策①分级）。
+#
+# 触发：每次 push 到 main、每个 PR。
+# 内容：static（类型 + 风格 + 单测）→ build（真打包）。
+# **不含** DB 集成测试与 E2E：它们需要真库和会过期的登录 cookie，
+# 放进必跑流水线迟早会因为"和代码无关的原因"变红。见 manual.yml。
+#
+# 关键约定：
+#   · 一律 npm ci —— 锁文件精确复现；npm install 会静默升级，CI 就失去意义
+#   · Node 版本写死 24，与 engines 一致，别用 lts/*（它悄悄变版本）
+#   · 构建只需要"假"环境变量：Prisma generate 不连库，next build 的页面
+#     都因 auth() 而 dynamic，构建期不会真的查库
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# 同一分支连续 push 时取消旧任务：省钱也省得看一堆过期结果
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # npm ci 会执行依赖的 install 脚本，playwright 会顺手下几百 MB 浏览器
+  PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+
+jobs:
+  static:
+    name: 类型 / 风格 / 单测
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # prisma client 在 .gitignore 里（generated/prisma），不生成的话 tsc 找不到类型
+      - name: 生成 Prisma Client
+        run: npx prisma generate
+
+      - name: 类型检查
+        run: npx tsc --noEmit
+
+      - name: ESLint
+        run: npm run lint
+
+      - name: 单测
+        run: npm run test:unit
+
+  build:
+    name: 生产构建
+    needs: static
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - run: npm ci
+
+      # 假值即可：构建期不连库。给真库反而危险（CI 会在构建时碰生产数据）
+      - name: 构建
+        env:
+          DATABASE_URL: 'postgresql://ci:ci@127.0.0.1:1/ci'
+          DIRECT_URL: 'postgresql://ci:ci@127.0.0.1:1/ci'
+          AUTH_SECRET: 'ci-build-only-secret-not-used-at-runtime'
+          AUTH_URL: 'http://localhost:3000'
+          AUTH_GITHUB_ID: 'ci'
+          AUTH_GITHUB_SECRET: 'ci'
+        run: npm run build

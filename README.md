@@ -1,5 +1,7 @@
 # knowledge-base
 
+[![CI](https://github.com/233zhangwen/knowledge-base/actions/workflows/ci.yml/badge.svg)](https://github.com/233zhangwen/knowledge-base/actions/workflows/ci.yml)
+
 个人知识库问答应用：上传文档 → 解析切片 → 向量化入库 → **Agent 化问答**——由模型决定何时检索（闲聊零检索）、把模糊问题改写成检索问句、需要时多步调用工具，回答带引用溯源，可回溯任意历史会话。
 
 **线上演示**：https://afei-knowledge-base.netlify.app （GitHub 账号登录即可试用）
@@ -102,6 +104,28 @@ node scripts/verify-stream-protocol.mts   # 零依赖协议验尸（装不上依
 
 **注意**：`e2e/.auth/state.json` 是**真凭证**（AUTH_SECRET 加密的会话 cookie），已 gitignore，过期后重跑 `npm run e2e:auth`。E2E 会留下 `E2E 知识库 xxx` 前缀的测试库，跑完在页面上删掉即可。
 
+### CI 分级（W13）
+
+`.github/workflows/ci.yml` —— 每次 push / PR：类型检查 → ESLint → 58 条单测 → 生产构建（用假 DATABASE_URL，构建期不连库）。
+
+`.github/workflows/manual.yml` —— 手动触发：DB 集成测试、E2E。
+
+**为什么 DB 与 E2E 不进必跑流水线**：两者依赖"会变的外部状态"——生产 Neon 库、GitHub OAuth 的会话 cookie。放进门禁后，总会出现"代码没改、流水线红了"的早晨，而那时你会开始怀疑测试本身，可它没错。**门禁只放稳定可复现的东西**，需要真库真模型的检查作为手动体检。
+
+## 可观测（W13）
+
+| 能力 | 实现 | 看哪里 |
+|---|---|---|
+| 结构化日志 | `src/lib/log.ts`：单行 JSON（`t/lvl/evt/字段`），`LOG_LEVEL` 分级，敏感字段自动 `[redacted]`，用户输入只落长度+指纹 | 平台日志按 `evt` 字段过滤 |
+| 健康检查 | `GET /api/health`：DB 探活 + 延迟 + 构建 commit | 浏览器 / uptime 探针 |
+| 错误持久化 | `src/lib/error-report.ts` + `ErrorLog` 表：`fingerprint` 去重累加 count，进程内 60s 节流 | `/admin` |
+| 每答成本 | `Message` 的 `inputTokens/outputTokens/steps/latencyMs`（W13 起落库） | `/admin` 成本区 |
+| 运维页 | `/admin`：最近 50 类错误 + 近 7 天成本/延迟（含 P95）/ 按库 top5 | 需 `ADMIN_EMAIL` 与登录邮箱一致，否则 404 |
+
+**为什么自建而不接 Sentry**：上报通道本身不能是不稳的。海外服务在本地网络下确实会断（W9 实测过），监控链路跟着抖就等于没监控。代价是功能原始——没有告警和源码映射，这两条列在「已知限制」里。
+
+**成本为什么不是写死的**：单价随模型变化，写死必算错。`LLM_PRICE_IN_PER_M` / `LLM_PRICE_OUT_PER_M` 配了才显示金额，没配就只显示 token。
+
 ## 评测
 
 不凭感觉调参。W6 建了一套 25 条的评测集（覆盖 12 个章节 / 9 个切片，含改述与跨片段计算 case），检索层与答案层分开测：
@@ -186,6 +210,7 @@ Agent 化后引用从"流前快照"变成"流中产物"，协议升到 v2。第�
 - **Agent 对知识类问题更贵**：工具 schema（约 300 token）+ 多步循环重发消息，in ≈2.2x / out ≈5.5x（对照数据见评测节）。收益场景是闲聊与多跳。prompt cache 类优化受国内 provider 能力限制，未做。
 - **生成中途按停，已出引用完整落库**（citations 数组在流外累积），但"边说边查"的罕见路径晚到引用只落库、本轮界面不回填（协议 v2 显式约束：事件行只保证出现在文本前）。
 - **检索相似度存在运行间波动**：同配置两次评测 recall@3 可差 0.04（单条 case 在阈值附近翻转），结论只看门槛不看小数点后第三位。
+- **可观测只到"能看"这一层**：没有告警通道（邮件/机器人），没有源码映射（minified stack 要自己还原），错误上报的节流是进程内的（重启清零、多实例各算各的）。理由见「可观测」一节，不是做不了，是当前阶段不值得。
 
 ## 项目结构
 
