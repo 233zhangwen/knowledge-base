@@ -48,6 +48,12 @@ jobs:
       - name: 生成 Prisma Client
         run: npx prisma generate
 
+      # 必须：next-env.d.ts 和 .next/types（LayoutProps/PageProps 等路由类型）都在
+      # .gitignore 里，本地有是因为跑过 dev/build，CI 是干净检出 —— 缺了它们 tsc 会挂
+      # （2026-10-31 首次 CI 实测：本地绿、CI 红，根因就是这个）。
+      - name: 生成路由类型
+        run: npx next typegen
+
       - name: 类型检查
         run: npx tsc --noEmit
 
