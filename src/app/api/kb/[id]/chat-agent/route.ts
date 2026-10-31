@@ -32,6 +32,8 @@ import {
   resolveConversation,
 } from '@/lib/history';
 import { runAgentTurn } from '@/lib/agent-llm';
+import { reportError } from '@/lib/error-report';
+import { log, previewText } from '@/lib/log';
 import { prisma } from '@/lib/prisma';
 import { requireUserId } from '@/lib/session';
 
@@ -93,10 +95,20 @@ export async function POST(
   const { messages: history, turn } = await loadContext(conversation.id);
 
   const shortConv = conversation.id.slice(0, 8);
-  console.log(`[agent] 第 ${turn} 轮 kb=${kbId.slice(0, 8)} conv=${shortConv} 历史 ${history.length} 条`);
+  log.info('agent.turn.start', {
+    kbId: kbId.slice(0, 8),
+    convId: shortConv,
+    turn,
+    history: history.length,
+    // 问题正文不进日志，只留长度 + 指纹（W13 B1 纪律②）
+    q: previewText(question),
+  });
 
   let answer = '';
   let persisted = false;
+  /** finish 事件带来的成本数据（W13 D 组）；中断时可能一直是 null */
+  let cost: { inputTokens: number; outputTokens: number; steps: number; latencyMs: number } | null =
+    null;
 
   async function persistAssistant(finishReason: 'complete' | 'stopped', citations: Citation[]) {
     if (persisted) return;
@@ -108,17 +120,17 @@ export async function POST(
         content: answer,
         citations,
         finishReason,
+        cost: cost ?? undefined,
       });
       await prisma.conversation.update({
         where: { id: conversation.id },
         data: { updatedAt: new Date() },
       });
     } catch (error) {
-      console.error(
-        `[agent] conv=${shortConv} 保存助手消息失败：${
-          error instanceof Error ? error.message : String(error)
-        }`,
-      );
+      log.error('agent.persist.failed', {
+        convId: shortConv,
+        err: error instanceof Error ? error.message : String(error),
+      });
     }
   }
 
@@ -150,7 +162,7 @@ export async function POST(
           switch (event.type) {
             case 'tool':
               // E2：检索状态行（前端可用来显示"正在检索：xxx"）
-              console.log(`[agent] conv=${shortConv} 检索：${event.question}`);
+              log.info('agent.retrieve', { convId: shortConv, q: previewText(event.question) });
               controller.enqueue(encoder.encode(encodeToolLine(event.question)));
               break;
             case 'citations':
@@ -166,11 +178,22 @@ export async function POST(
               controller.enqueue(encoder.encode(event.text));
               break;
             case 'finish':
-              console.log(
-                `[agent] conv=${shortConv} 完成：steps=${event.steps} ` +
-                  `tokens=${event.usage.inputTokens}/${event.usage.outputTokens} ` +
-                  `citations=${citations.length} 总耗时 ${Date.now() - t0}ms`,
-              );
+              // W13 D：成本落库（不再是只打日志）。latencyMs 是墙钟总耗时，
+              // 不等于模型耗时 —— 用户感知的是墙钟。
+              cost = {
+                inputTokens: event.usage.inputTokens,
+                outputTokens: event.usage.outputTokens,
+                steps: event.steps,
+                latencyMs: Date.now() - t0,
+              };
+              log.info('agent.turn.done', {
+                convId: shortConv,
+                steps: cost.steps,
+                inTokens: cost.inputTokens,
+                outTokens: cost.outputTokens,
+                citations: citations.length,
+                ms: cost.latencyMs,
+              });
               break;
           }
         }
@@ -181,7 +204,13 @@ export async function POST(
           await persistAssistant('stopped', citations);
         } else {
           const message = error instanceof Error ? error.message : String(error);
-          console.error(`[agent] conv=${shortConv} 生成失败：${message}`);
+          // 双写：日志给现场，ErrorLog 给"有哪些错还没修"（W13 C 组）
+          void reportError({
+            event: 'agent.generate.failed',
+            message,
+            stack: error instanceof Error ? error.stack : undefined,
+            path: '/api/kb/[id]/chat-agent',
+          });
           try {
             controller.enqueue(encoder.encode(encodeErrorLine(message)));
           } catch {

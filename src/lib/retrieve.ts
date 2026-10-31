@@ -20,6 +20,7 @@
  * 不是字符串拼接 —— 和 $3::vector 一样，没有注入风险。
  */
 import { embedTexts } from './embedding';
+import { log } from './log';
 import { prisma } from './prisma';
 
 /**
@@ -80,12 +81,15 @@ export async function retrieve(kbId: string, question: string): Promise<Retrieve
 
   /**
    * E2 要求的观测日志：每次检索一行。
-   * 现在顺手打出来，W6 调优才有数据；到时候再回头加埋点，要重读一遍 W4 的代码。
+   * W13 起改成结构化（单行 JSON）：召回条数、top1 相似度、耗时都是要能聚合的数值，
+   * 埋在中文串里只能靠肉眼看。
    */
-  console.log(
-    `[retrieve] kb=${kbId.slice(0, 8)} 召回 ${chunks.length} 条 ` +
-      `top1=${chunks[0]?.similarity.toFixed(4) ?? 'N/A'} 耗时 ${Date.now() - t0}ms`,
-  );
+  log.info('retrieve.done', {
+    kbId: kbId.slice(0, 8),
+    hits: chunks.length,
+    top1: chunks[0] ? Number(chunks[0].similarity.toFixed(4)) : null,
+    ms: Date.now() - t0,
+  });
 
   return chunks;
 }

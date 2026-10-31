@@ -11,6 +11,7 @@
 import type { Citation } from './chat-protocol';
 import type { Prisma } from '@/generated/prisma/client';
 import type { ChatMessage } from './llm';
+import { log } from './log';
 import { prisma } from './prisma';
 
 /**
@@ -64,7 +65,8 @@ export async function resolveConversation(params: {
       select: { id: true },
     });
     if (!existing) throw new ConversationNotFound();
-    console.log(`[chat] conversation=${existing.id.slice(0, 8)} reuse`);
+    // debug 级：这是每次提问都会打的高频流水，排查"会话串了/没续上"时才打开
+    log.debug('conversation.reuse', { convId: existing.id.slice(0, 8) });
     return { id: existing.id, isNew: false };
   }
 
@@ -79,7 +81,7 @@ export async function resolveConversation(params: {
     data: { userId, kbId, title: titleFromQuestion(question) },
     select: { id: true },
   });
-  console.log(`[chat] conversation=${created.id.slice(0, 8)} new`);
+  log.debug('conversation.create', { convId: created.id.slice(0, 8) });
   return { id: created.id, isNew: true };
 }
 
@@ -159,6 +161,12 @@ export async function appendAssistantMessage(params: {
   /** Citation 快照数组（含片段全文）。用 InputJsonValue 收，避免调用方到处 as any */
   citations: Citation[];
   finishReason: 'complete' | 'stopped';
+  /**
+   * 每答成本（W13 D 组）。全部可选：
+   *   stopped（用户中断）时上游没发 finish，拿不到 usage —— 这不是缺陷，是事实，
+   *   宁可留空也不要填 0（0 会把统计均值拉低，比缺数据更糟）。
+   */
+  cost?: { inputTokens?: number; outputTokens?: number; steps?: number; latencyMs?: number };
 }) {
   return prisma.message.create({
     data: {
@@ -167,6 +175,10 @@ export async function appendAssistantMessage(params: {
       content: params.content,
       citations: params.citations as unknown as Prisma.InputJsonValue,
       finishReason: params.finishReason,
+      inputTokens: params.cost?.inputTokens ?? null,
+      outputTokens: params.cost?.outputTokens ?? null,
+      steps: params.cost?.steps ?? null,
+      latencyMs: params.cost?.latencyMs ?? null,
     },
     select: { id: true },
   });

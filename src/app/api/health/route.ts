@@ -12,6 +12,7 @@
  *     （人、监控、将来的 uptime 探针）都按状态码判断，语义要直白。
  *   - 强制 no-store：健康检查被 CDN 缓存住就等于没有。
  */
+import { log } from '@/lib/log';
 import { prisma } from '@/lib/prisma';
 
 export const dynamic = 'force-dynamic';
@@ -30,7 +31,9 @@ export async function GET() {
     dbVersion = String(rows[0]?.version ?? '').split(' ').slice(0, 2).join(' ') || null;
   } catch (error) {
     // 日志留在服务端（平台日志里能看），响应体里只给状态
-    console.error('[health] 数据库探测失败', error);
+    log.error('health.db_probe_failed', {
+      err: error instanceof Error ? error.message : String(error),
+    });
   }
 
   const body = {

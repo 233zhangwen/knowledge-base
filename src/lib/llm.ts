@@ -14,6 +14,7 @@
  *   enable_thinking: false 无效（思考 token 照常计费）。
  *   关闭后首字延迟约 630ms，是验收 B1「1.5 秒出首字」的基线。
  */
+import { log } from './log';
 import PROMPT from './rag-prompt.json';
 import type { RetrievedChunk } from './retrieve';
 
@@ -152,9 +153,10 @@ export async function* streamChat(
    * 结构固定是 system 1 + 历史 N + 当前 user 1，所以历史 = 总数 - 2。
    * 这条日志要能一眼看出"历史是不是被截在上限":第 5 轮之后历史应恒等于 6。
    */
-  console.log(
-    `[llm] 上下文 ${messages.length} 条（system 1 + 历史 ${Math.max(messages.length - 2, 0)} + 当前 user 1）`,
-  );
+  log.debug('llm.context', {
+    total: messages.length,
+    history: Math.max(messages.length - 2, 0),
+  });
 
   let res: Response;
   try {
@@ -236,7 +238,7 @@ export async function* streamChat(
         const reasoning = json.usage?.completion_tokens_details?.reasoning_tokens;
         if (reasoning && reasoning > 0) {
           // 不中断服务，但必须在日志里看见 —— 思考 token 是真金白银
-          console.warn(`[llm] ⚠️ 本次回答包含 ${reasoning} 个思考 token，检查 thinking 参数是否还在`);
+          log.warn('llm.thinking_tokens', { reasoning });
         }
       }
     }

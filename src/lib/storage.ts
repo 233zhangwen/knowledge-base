@@ -18,6 +18,7 @@ import { mkdir, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 import { prisma } from '@/lib/prisma';
+import { log } from '@/lib/log';
 
 /** 本地 driver 的根目录。生产环境一定有 Blob token，走不到这里。 */
 const LOCAL_ROOT = path.join(process.cwd(), '.storage');
@@ -137,6 +138,11 @@ export async function removeQuietly(key: string): Promise<void> {
   try {
     await storage.remove(key);
   } catch (error) {
-    console.error(`[storage] 删除对象失败（孤儿文件，需人工清理）：${key}`, error);
+    // key 必须留下：这是人工清理孤儿文件的唯一线索
+    log.error('storage.delete.failed', {
+      key,
+      err: error instanceof Error ? error.message : String(error),
+      stack: error instanceof Error ? error.stack : undefined,
+    });
   }
 }
