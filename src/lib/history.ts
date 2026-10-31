@@ -26,8 +26,10 @@ export const HISTORY_TURNS = 3;
 const HISTORY_MESSAGE_LIMIT = HISTORY_TURNS * 2;
 
 /** 会话标题取首问前 20 个字。超长时截断加省略号。
- *  ⚠️ 实现搬到 ./conversation-title.ts（纯函数，不能和"顶层就连库"的模块混住，见那里的注释）。 */
-export { titleFromQuestion } from './conversation-title';
+ *  ⚠️ 实现搬到 ./conversation-title.ts（纯函数，不能和"顶层就连库"的模块混住，见那里的注释）。
+ *  这里必须 import 进来再用 —— `export { x } from` 只做转发，不会在模块内产生本地绑定。 */
+import { titleFromQuestion } from './conversation-title';
+export { titleFromQuestion };
 
 /** 会话不存在或不属于当前用户/知识库。调用方应把它翻译成 404，而不是 403。 */
 export class ConversationNotFound extends Error {
