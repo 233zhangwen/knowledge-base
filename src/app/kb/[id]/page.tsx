@@ -5,7 +5,7 @@ import type { Citation } from '@/lib/chat-protocol';
 import { conversationTimeParts } from '@/lib/conversation-time';
 import { ConversationNotFound, loadConversationMessages, listConversations } from '@/lib/history';
 import { prisma } from '@/lib/prisma';
-import { requireUserId } from '@/lib/session';
+import { requireTenant } from '@/lib/session';
 
 import { ChatPanel, type UiMessage } from './ChatPanel';
 import { ConversationSidebar, type SidebarItem } from './ConversationSidebar';
@@ -29,11 +29,11 @@ export default async function KnowledgeBaseDetailPage({
 }) {
   const { id } = await params;
   const { c, n } = await searchParams;
-  const userId = await requireUserId();
+  const { orgId } = await requireTenant();
 
   const kb = await prisma.knowledgeBase.findFirst({
-    // 归属校验放在查询条件里，而不是"先查出来再判断是不是我的"
-    where: { id, userId },
+    // 归属校验放在查询条件里，而不是"先查出来再判断是不是我的组织的"
+    where: { id, orgId },
     select: {
       id: true,
       name: true,
@@ -71,7 +71,7 @@ export default async function KnowledgeBaseDetailPage({
    * 会话本身就是天然的数据边界 —— 一次会话很少超过 30 条消息，
    * 用它做分组就已经解决了"数据量无限增长"，不需要再套一层滚动分页。
    */
-  const conversations = await listConversations(userId, kb.id);
+  const conversations = await listConversations(orgId, kb.id);
   const now = new Date();
   const sidebarItems: SidebarItem[] = conversations.map((c) => {
     const { timeText, group } = conversationTimeParts(c.updatedAt, now);
@@ -89,13 +89,13 @@ export default async function KnowledgeBaseDetailPage({
    *
    * 即便它不在上面那 20 个里也照样能打开 —— 侧栏只是导航，
    * 不能反过来限制"哪些会话可访问"。这也是为什么这里要重新查一次而不是从列表里找。
-   * `loadConversationMessages` 内部已经用 userId 过滤过（spec C1），这里再对一次 kbId（spec C2）。
+   * `loadConversationMessages` 内部已经用 orgId 过滤过（spec C1），这里再对一次 kbId（spec C2）。
    */
   let activeConversationId: string | null = null;
   let initialMessages: UiMessage[] = [];
   if (c) {
     try {
-      const { conversation, messages } = await loadConversationMessages(userId, c);
+      const { conversation, messages } = await loadConversationMessages(orgId, c);
       if (conversation.kbId === kb.id) {
         activeConversationId = conversation.id;
         initialMessages = messages.map((m) => ({

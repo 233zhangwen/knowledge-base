@@ -43,15 +43,19 @@ export function contentTypeFor(type: SourceType): string {
 }
 
 /**
- * 生成对象存储的 key：`${userId}/${documentId}-${安全文件名}`。
+ * 生成对象存储的 key：`${uploaderId}/${documentId}-${安全文件名}`。
  *
  * 两个设计点：
- *   1. **userId 当前缀** —— 天然的用户隔离，清理某个用户的数据时按前缀删即可。
+ *   1. **上传者 id 当前缀** —— 清理某个人的上传时按前缀删即可。
+ *      ⚠️ 这**不是**权限边界（W19 起权限全在数据库的 orgId 上）。key 只是路径，
+ *      知道 key 也取不到文件：读取一律先查 Document 行、再做 orgId 校验。
+ *      把它当权限用，就会得出"改个前缀就能越权"的错觉 —— 反过来也危险：
+ *      以为换个前缀就安全了。
  *   2. **文件名要净化** —— 它是用户可控的输入，必须去掉路径分隔符和特殊符号
  *      （storage.put 还会再校验一次，这里是第一道）。
  */
 export function buildStorageKey(
-  userId: string,
+  uploaderId: string,
   documentId: string,
   fileName: string,
 ): string {
@@ -62,5 +66,5 @@ export function buildStorageKey(
       .slice(0, 80) // 截断超长文件名：数据库字段和文件系统都有长度上限
       .trim() || 'unnamed';
 
-  return `${userId}/${documentId}-${safeName}`;
+  return `${uploaderId}/${documentId}-${safeName}`;
 }

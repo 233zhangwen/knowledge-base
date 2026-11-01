@@ -42,24 +42,30 @@ export class ConversationNotFound extends Error {
 /**
  * 复用已有会话，或新建会话。
  *
- * 两条校验一条都不能省（spec C1 / C2）：
- *   userId —— 改一下 URL 就能看别人全部对话记录，这是本项目最严重的一类缺陷；
+ * 三条校验一条都不能省（spec C1 / C2，W19 增加组织维度）：
+ *   orgId  —— 改一下 URL 就能看别的组织的对话记录，这是本项目最严重的一类缺陷；
  *   kbId   —— 会话是挂在某个知识库下的，借 A 库的会话去问 B 库，
- *             历史串了、检索却发生在当前库，表现出来只是"答案有点怪"。
+ *             历史串了、检索却发生在当前库，表现出来只是"答案有点怪"；
+ *   userId 不再作为过滤条件，改为 createdBy（只是记录谁建的，不参与权限判断）。
+ *
+ * ⚠️ orgId 与 kbId 都带上不是冗余：kbId 唯一决定组织，理论上一个条件就够。
+ *    但"理论上够"的前提是调用方永远传对 —— 两次独立的校验只要有一次对就够了，
+ *    这类防御的成本是一条索引，收益是少一种静默越权。
  *
  * 返回 404 而不是 403：不向 probing 的请求泄露"这个会话存在，只是不是你的"。
  */
 export async function resolveConversation(params: {
-  userId: string;
+  orgId: string;
+  createdBy: string;
   kbId: string;
   conversationId: string | null;
   question: string;
 }): Promise<{ id: string; isNew: boolean }> {
-  const { userId, kbId, conversationId, question } = params;
+  const { orgId, createdBy, kbId, conversationId, question } = params;
 
   if (conversationId) {
     const existing = await prisma.conversation.findFirst({
-      where: { id: conversationId, userId, kbId },
+      where: { id: conversationId, orgId, kbId },
       select: { id: true },
     });
     if (!existing) throw new ConversationNotFound();
@@ -76,7 +82,7 @@ export async function resolveConversation(params: {
    * 走的是 chat 流的第一行 —— 见 chat-protocol.ts 的 encodeHeadLine。
    */
   const created = await prisma.conversation.create({
-    data: { userId, kbId, title: titleFromQuestion(question) },
+    data: { orgId, createdBy, kbId, title: titleFromQuestion(question) },
     select: { id: true },
   });
   log.debug('conversation.create', { convId: created.id.slice(0, 8) });
@@ -187,9 +193,9 @@ export async function appendAssistantMessage(params: {
  * 会话本身就是天然的数据边界 —— 一次会话很少超过 30 条消息，
  * 用它做分组就已经解决了"数据量无限增长"，不需要再套一层分页。
  */
-export async function listConversations(userId: string, kbId: string, take = 20) {
+export async function listConversations(orgId: string, kbId: string, take = 20) {
   return prisma.conversation.findMany({
-    where: { userId, kbId },
+    where: { orgId, kbId },
     orderBy: { updatedAt: 'desc' },
     take,
     select: {
@@ -208,9 +214,9 @@ export async function listConversations(userId: string, kbId: string, take = 20)
  * 不 —— 标题在建会话时就写了（取的就是第一句话），所以只有极端异常才会为空。
  * UI 侧仍要兜住 null，别直接渲染。
  */
-export async function loadConversationMessages(userId: string, conversationId: string) {
+export async function loadConversationMessages(orgId: string, conversationId: string) {
   const conversation = await prisma.conversation.findFirst({
-    where: { id: conversationId, userId },
+    where: { id: conversationId, orgId },
     select: { id: true, kbId: true, title: true },
   });
   if (!conversation) throw new ConversationNotFound();

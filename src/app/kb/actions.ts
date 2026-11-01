@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
-import { requireUserId } from '@/lib/session';
+import { requireTenant } from '@/lib/session';
 import { removeQuietly } from '@/lib/storage';
 
 import type { ActionState } from '@/lib/action-state';
@@ -36,7 +36,7 @@ export async function createKnowledgeBase(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const userId = await requireUserId();
+  const { userId, orgId } = await requireTenant();
 
   const validated = validateName(formData.get('name'));
   if ('error' in validated) {
@@ -49,11 +49,14 @@ export async function createKnowledgeBase(
   }
 
   await prisma.knowledgeBase.create({
-    // userId 来自 session，不是来自表单 —— 这一步就是 ownership 的来源
+    // orgId / createdBy 都来自 session，不是来自表单 —— 这一步就是归属的来源。
+    // 两个字段分开写是有意的：orgId 决定"谁能看"，createdBy 只记"谁建的"。
+    // 合成一个字段（就是 W19 之前的写法）会在加第二个成员时立刻说不清权限。
     data: {
       name: validated.name,
       description: description || null,
-      userId,
+      orgId,
+      createdBy: userId,
     },
   });
 
@@ -70,7 +73,7 @@ export async function renameKnowledgeBase(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const userId = await requireUserId();
+  const { orgId } = await requireTenant();
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -85,9 +88,9 @@ export async function renameKnowledgeBase(
   /**
    * ⚠️ 这里用 updateMany，不用 update —— 为了把"没改到"表达成数据，而不是异常。
    *
-   * 【先纠正一个常见误解】真正防越权的是 **where 里的 userId**，不是 updateMany 这个函数名。
+   * 【先纠正一个常见误解】真正防越权的是 **where 里的 orgId**，不是 updateMany 这个函数名。
    * Prisma 的 WhereUniqueInput 支持额外过滤字段（见 generated/prisma/models/KnowledgeBase.ts:210，
-   * userId 就在里面），所以 `update({ where: { id, userId } })` 同样改不到别人的东西。
+   * orgId 就在里面），所以 `update({ where: { id, orgId } })` 同样改不到别的组织的东西。
    *
    * 那为什么还选 updateMany？差别在**失败怎么表达**：
    *   update     → 匹配不到就抛 P2025 异常（控制流）
@@ -101,12 +104,12 @@ export async function renameKnowledgeBase(
    * 代价：updateMany 拿不到更新后的记录、不支持嵌套写。将来若真的需要返回实体，
    * 再换回 update + 精确捕获 P2025 即可。
    *
-   * userId 来自 session（`requireUserId()`），不是来自表单 —— 这是整段的安全支点。
+   * orgId 来自 session（`requireTenant()`），不是来自表单 —— 这是整段的安全支点。
    * 提示语统一写成"不存在或无权修改"，不区分这两种情况 ——
    * 否则攻击者可以用返回信息来枚举"哪些 id 真实存在"。
    */
   const { count } = await prisma.knowledgeBase.updateMany({
-    where: { id, userId },
+    where: { id, orgId },
     data: { name: validated.name },
   });
 
@@ -123,7 +126,7 @@ export async function deleteKnowledgeBase(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const userId = await requireUserId();
+  const { orgId } = await requireTenant();
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -131,7 +134,7 @@ export async function deleteKnowledgeBase(
   }
 
   /**
-   * 同理用 deleteMany + userId，不用 delete —— 理由同上：
+   * 同理用 deleteMany + orgId，不用 delete —— 理由同上：
    * 我们要的是 count === 0，而不是去 catch 一个语义含糊的 P2025。
    *
    * 数据库层面：Document 的 onDelete 是 Cascade，
@@ -143,12 +146,12 @@ export async function deleteKnowledgeBase(
    * 反过来最多留个没人能访问的文件（还会被 removeQuietly 记进日志）。
    */
   const documents = await prisma.document.findMany({
-    where: { kb: { id, userId } },
+    where: { kb: { id, orgId } },
     select: { storageKey: true },
   });
 
   const { count } = await prisma.knowledgeBase.deleteMany({
-    where: { id, userId },
+    where: { id, orgId },
   });
 
   /**

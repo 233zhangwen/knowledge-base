@@ -26,6 +26,7 @@
     "eval:agent": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-agent.mts",
     "eval:rerank": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-rerank.mts",
     "check:cases": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/check-case-annotations.mts",
+    "check:scope": "node --experimental-transform-types scripts/check-tenant-scope.mts",
     "realign:cases": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/realign-cases.mts"
   },
   "dependencies": {

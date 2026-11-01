@@ -35,7 +35,7 @@ import { runAgentTurn } from '@/lib/agent-llm';
 import { reportError } from '@/lib/error-report';
 import { log, previewText } from '@/lib/log';
 import { prisma } from '@/lib/prisma';
-import { requireUserId } from '@/lib/session';
+import { requireTenant } from '@/lib/session';
 import { sanitizeAnswer, stripInvisible } from '@/lib/untrusted';
 
 const MAX_QUESTION_LENGTH = 1000;
@@ -45,11 +45,11 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id: kbId } = await params;
-  const userId = await requireUserId();
+  const { userId, orgId } = await requireTenant();
 
-  // 归属校验：与旧端点同套路（D1/D2 第一道门）
+  // 归属校验：与旧端点同套路（D1/D2 第一道门）。W19 起按组织判，不按人判。
   const kb = await prisma.knowledgeBase.findFirst({
-    where: { id: kbId, userId },
+    where: { id: kbId, orgId },
     select: { id: true },
   });
   if (!kb) {
@@ -90,7 +90,13 @@ export async function POST(
 
   let conversation: { id: string };
   try {
-    conversation = await resolveConversation({ userId, kbId, conversationId, question });
+    conversation = await resolveConversation({
+      orgId,
+      createdBy: userId,
+      kbId,
+      conversationId,
+      question,
+    });
   } catch (error) {
     if (error instanceof ConversationNotFound) {
       return Response.json({ error: '会话不存在' }, { status: 404 });
@@ -178,7 +184,9 @@ export async function POST(
           content: m.content,
         }));
         for await (const event of runAgentTurn({
-          kbId,
+          // 传校验函数返回的 kb.id，而不是 URL 里的 kbId —— 值相同，
+          // 但这样"往下传的一定是经过归属校验的那一个"在代码上看得见（W19）
+          kbId: kb.id,
           question,
           history: agentHistory,
           signal: request.signal,

@@ -30,6 +30,8 @@ const EMAIL_B = `${RUN_ID}-b@example.invalid`;
 type Fixture = {
   userA: string;
   userB: string;
+  orgA: string;
+  orgB: string;
   kbA: string;
   kbB: string;
   convA: string;
@@ -47,16 +49,33 @@ describe.skipIf(!RUN_DB_TESTS)('history · 隔离与上下文窗口（真实 Neo
       data: { email: EMAIL_B, name: '测试用户B' },
       select: { id: true },
     });
+
+    // W19：每个用户一个组织。权限判断走 orgId，userId 只记 createdBy。
+    const orgA = await prisma.organization.create({
+      data: {
+        name: `${RUN_ID} 组织A`,
+        memberships: { create: { userId: userA.id, role: 'owner' } },
+      },
+      select: { id: true },
+    });
+    const orgB = await prisma.organization.create({
+      data: {
+        name: `${RUN_ID} 组织B`,
+        memberships: { create: { userId: userB.id, role: 'owner' } },
+      },
+      select: { id: true },
+    });
+
     const kbA = await prisma.knowledgeBase.create({
-      data: { name: `${RUN_ID} 库A`, userId: userA.id },
+      data: { name: `${RUN_ID} 库A`, orgId: orgA.id, createdBy: userA.id },
       select: { id: true },
     });
     const kbB = await prisma.knowledgeBase.create({
-      data: { name: `${RUN_ID} 库B`, userId: userB.id },
+      data: { name: `${RUN_ID} 库B`, orgId: orgB.id, createdBy: userB.id },
       select: { id: true },
     });
     const convA = await prisma.conversation.create({
-      data: { userId: userA.id, kbId: kbA.id, title: 'A 的会话' },
+      data: { orgId: orgA.id, createdBy: userA.id, kbId: kbA.id, title: 'A 的会话' },
       select: { id: true },
     });
 
@@ -73,30 +92,41 @@ describe.skipIf(!RUN_DB_TESTS)('history · 隔离与上下文窗口（真实 Neo
       });
     }
 
-    fx = { userA: userA.id, userB: userB.id, kbA: kbA.id, kbB: kbB.id, convA: convA.id };
+    fx = {
+      userA: userA.id,
+      userB: userB.id,
+      orgA: orgA.id,
+      orgB: orgB.id,
+      kbA: kbA.id,
+      kbB: kbB.id,
+      convA: convA.id,
+    };
   });
 
   afterAll(async () => {
-    // 按 email 前缀清理：级联删除会带走 kb / conversation / message
+    // 按 email 前缀清理：级联删除会带走 membership / org 之外的一切。
+    // Organization 没有挂在 user 上（成员是流动的），所以要单独删。
     await prisma.user.deleteMany({ where: { email: { in: [EMAIL_A, EMAIL_B] } } });
+    await prisma.organization.deleteMany({ where: { name: { startsWith: RUN_ID } } });
     await prisma.$disconnect();
   });
 
-  it('B3 · listConversations 只返回本用户本库的会话（换个 userId 就查不到）', async () => {
-    const mine = await listConversations(fx.userA, fx.kbA);
+  it('B3 · listConversations 只返回本组织本库的会话（换个 orgId 就查不到）', async () => {
+    const mine = await listConversations(fx.orgA, fx.kbA);
     expect(mine.map((c) => c.id)).toContain(fx.convA);
 
-    const others = await listConversations(fx.userB, fx.kbA); // 用户错
+    const others = await listConversations(fx.orgB, fx.kbA); // 组织错
     expect(others).toHaveLength(0);
 
-    const wrongKb = await listConversations(fx.userA, fx.kbB); // 库错
+    const wrongKb = await listConversations(fx.orgA, fx.kbB); // 库错
     expect(wrongKb).toHaveLength(0);
   });
 
   it('resolveConversation · 拿别人的会话 id 提问 → ConversationNotFound（不是 403）', async () => {
     await expect(
       resolveConversation({
-        userId: fx.userB,
+        orgId: fx.orgB,
+        createdBy: fx.userB,
         kbId: fx.kbB,
         conversationId: fx.convA,
         question: '偷看一下',
@@ -107,7 +137,8 @@ describe.skipIf(!RUN_DB_TESTS)('history · 隔离与上下文窗口（真实 Neo
   it('resolveConversation · 拿本库会话去问另一个库 → 也拒绝（历史不许串库）', async () => {
     await expect(
       resolveConversation({
-        userId: fx.userA,
+        orgId: fx.orgA,
+        createdBy: fx.userA,
         kbId: fx.kbB,
         conversationId: fx.convA,
         question: '串库试试',
@@ -117,7 +148,8 @@ describe.skipIf(!RUN_DB_TESTS)('history · 隔离与上下文窗口（真实 Neo
 
   it('resolveConversation · conversationId 为 null 时新建，且标题来自首问', async () => {
     const created = await resolveConversation({
-      userId: fx.userA,
+      orgId: fx.orgA,
+      createdBy: fx.userA,
       kbId: fx.kbA,
       conversationId: null,
       question: '新会话的第一个问题',
@@ -142,7 +174,7 @@ describe.skipIf(!RUN_DB_TESTS)('history · 隔离与上下文窗口（真实 Neo
 
   it('loadContext · 历史以 assistant 开头时先丢掉它（畸形上下文会让某些 API 直接报错）', async () => {
     const orphan = await prisma.conversation.create({
-      data: { userId: fx.userA, kbId: fx.kbA, title: '孤儿会话' },
+      data: { orgId: fx.orgA, createdBy: fx.userA, kbId: fx.kbA, title: '孤儿会话' },
       select: { id: true },
     });
     const t = Date.now();

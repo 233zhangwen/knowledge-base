@@ -6,7 +6,7 @@ import { buildStorageKey, contentTypeFor, detectSourceType, MAX_FILE_SIZE } from
 import { indexDocument } from '@/lib/index-document';
 import { extractText } from '@/lib/parse';
 import { prisma } from '@/lib/prisma';
-import { requireUserId } from '@/lib/session';
+import { requireTenant } from '@/lib/session';
 import { removeQuietly, storage } from '@/lib/storage';
 
 import type { ActionState } from '@/lib/action-state';
@@ -22,7 +22,7 @@ export async function uploadDocument(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const userId = await requireUserId();
+  const { userId, orgId } = await requireTenant();
 
   const kbId = String(formData.get('kbId') ?? '');
   if (!kbId) {
@@ -31,11 +31,11 @@ export async function uploadDocument(
 
   /**
    * kbId 来自表单，所以**必须**先验归属。
-   * 这是铁律的延伸：凡是从客户端来的 id，都要和 session 里的 userId 做一次 AND，
-   * 不能直接拿去查。这里用的是 findFirst({ where: { id, userId } })。
+   * 这是铁律的延伸：凡是从客户端来的 id，都要和 session 里的 orgId 做一次 AND，
+   * 不能直接拿去查。这里用的是 findFirst({ where: { id: kbId, orgId } })。
    */
   const kb = await prisma.knowledgeBase.findFirst({
-    where: { id: kbId, userId },
+    where: { id: kbId, orgId },
     select: { id: true },
   });
   if (!kb) {
@@ -77,7 +77,14 @@ export async function uploadDocument(
   const bytes = new Uint8Array(await file.arrayBuffer());
 
   try {
-    // ① 存原件
+    /**
+     * ① 存原件。
+     *
+     * storageKey 仍然用 userId 做前缀 —— 注意这**不是权限边界**。
+     * 权限判断全在数据库（orgId），key 只是路径：改前缀不会让任何人多看到或少看到
+     * 一份文件，但会让存量原件全部找不到（线上已有文件是 `用户id/文档id-文件名`）。
+     * 保留 userId 的语义是"谁传的"，和 createdBy 一致。
+     */
     const storageKey = buildStorageKey(userId, document.id, file.name);
     await storage.put(storageKey, bytes, contentTypeFor(sourceType));
     // 立刻记录 key：万一后面解析崩了，这条 key 还在，原件才有机会被回收
@@ -134,7 +141,7 @@ export async function reindexDocument(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const userId = await requireUserId();
+  const { orgId } = await requireTenant();
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -142,7 +149,7 @@ export async function reindexDocument(
   }
 
   const document = await prisma.document.findFirst({
-    where: { id, kb: { userId } },
+    where: { id, kb: { orgId } },
     select: { id: true, kbId: true, content: true },
   });
   if (!document) {
@@ -176,7 +183,7 @@ export async function deleteDocument(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const userId = await requireUserId();
+  const { orgId } = await requireTenant();
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -184,12 +191,12 @@ export async function deleteDocument(
   }
 
   /**
-   * 同样的套路：deleteMany + 用关系过滤做归属校验（`kb: { userId }`）。
+   * 同样的套路：deleteMany + 用关系过滤做归属校验（`kb: { orgId }`）。
    * 分成两步（先查 key 再删）是因为**删完就查不到了** ——
    * 记录一没，对象存储里的原件就再也没人知道叫什么名字。
    */
   const document = await prisma.document.findFirst({
-    where: { id, kb: { userId } },
+    where: { id, kb: { orgId } },
     select: { id: true, storageKey: true, kbId: true },
   });
   if (!document) {
@@ -197,7 +204,7 @@ export async function deleteDocument(
   }
 
   const { count } = await prisma.document.deleteMany({
-    where: { id, kb: { userId } },
+    where: { id, kb: { orgId } },
   });
 
   if (count === 0) {
@@ -225,16 +232,20 @@ export async function deleteConversation(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const userId = await requireUserId();
+  const { orgId } = await requireTenant();
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
     return { error: '缺少会话 id' };
   }
 
-  /** 归属校验和 deleteDocument 同一套：客户端来的 id 必须和 userId 做 AND */
+  /**
+   * 归属校验和 deleteDocument 同一套，但这里直接用 Conversation.orgId，
+   * 不走 `kb: { orgId }` 的关系过滤 —— 冗余那一列就是为了这个：
+   * 条件都落在本表上，不必 join。（为什么敢冗余，见 schema 里 Conversation.orgId 的注释）
+   */
   const conversation = await prisma.conversation.findFirst({
-    where: { id, kb: { userId } },
+    where: { id, orgId },
     select: { id: true, kbId: true },
   });
   if (!conversation) {
@@ -242,7 +253,7 @@ export async function deleteConversation(
   }
 
   const { count } = await prisma.conversation.deleteMany({
-    where: { id, kb: { userId } },
+    where: { id, orgId },
   });
   if (count === 0) {
     return { error: '会话不存在或无权删除' };
