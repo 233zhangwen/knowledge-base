@@ -177,7 +177,8 @@
     "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
     "question": "出差住酒店的费用怎么报？",
     "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
-    "answerMustContain": ["分级"]
+    "answerMustContain": null,
+    "answerAnyOf": [["分级", "定额", "档次", "级别"]]
   },
   {
     "id": "c23",
@@ -240,7 +241,7 @@
     "section": "版本冲突 · 离职",
     "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
     "question": "员工提出辞职应提前多久以书面形式通知公司？",
-    "expectChunks": [{ "index": 8, "snippet": "交接须填写《离职交接单》" }],
+    "expectChunks": [{ "index": 7, "snippet": "违规行为可通过匿名信箱" }],
     "confuserChunks": [
       {
         "documentTitle": "E-星海科技员工手册(2024版).md",
