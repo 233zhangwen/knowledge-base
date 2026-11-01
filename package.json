@@ -21,6 +21,7 @@
     "eval:injection": "node scripts/eval-injection.mjs",
     "eval:injection:baseline": "node scripts/eval-injection.mjs --baseline",
     "seed:injection": "node scripts/seed-injection-fixtures.mjs",
+    "seed:kb": "node --experimental-transform-types scripts/seed-kb-fixtures.mts",
     "backfill:meta": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/backfill-doc-meta.mts",
     "eval:agent": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-agent.mts",
     "eval:rerank": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-rerank.mts",

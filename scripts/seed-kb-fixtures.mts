@@ -19,10 +19,12 @@
  *       只解析 + 切片 + 打印块数，不连库、不调 API
  *   node --experimental-strip-types scripts/seed-kb-fixtures.mts
  *       写入知识库C（幂等：先按标题删同库旧文档）
+ *   ... --only=C-      只处理文件名含 C- 的素材（W18 起；不加就是整目录重灌）
  *   node --experimental-strip-types scripts/seed-kb-fixtures.mts --clean
  *       只删不建
  *
- * 需要联网时前置：代理要开（EMBED 走 api.siliconflow.cn），命令前加 NODE_USE_ENV_PROXY=1。
+ * 需要联网时前置：EMBED 走 api.siliconflow.cn，国内直连即可（W18 实测）。
+ * 若本机代理关着而 .env.local 里还配了 HTTPS_PROXY，别加 NODE_USE_ENV_PROXY=1 —— 那会让 fetch 去连一个没开的端口。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -44,6 +46,16 @@ const dirArg = argv.find((a) => a.startsWith('--dir='));
 const FIXTURE_DIR = dirArg
   ? path.resolve(dirArg.slice('--dir='.length))
   : path.join(ROOT, 'kb-fixtures');
+
+/**
+ * --only=<子串> 只处理文件名里含这个子串的素材。
+ *
+ * 为什么需要（W18）：只换一篇文档时，整目录重灌会把另外 5 篇也删了重建 ——
+ * 文档 id 是 `doc-w15-<文件名哈希>`，重建即换 id，历史会话里的引用链接全部失效。
+ * 「改一篇就只动一篇」不是洁癖，是让改动的影响面可以被一句话说清。
+ */
+const onlyArg = argv.find((a) => a.startsWith('--only='));
+const ONLY = onlyArg ? onlyArg.slice('--only='.length) : null;
 
 /** 00- 开头的是给人看的用法说明，不是评测素材。 */
 const SKIP_PREFIX = '00-';
@@ -122,6 +134,7 @@ if (DRY && CLEAN) {
 const files = fs
   .readdirSync(FIXTURE_DIR)
   .filter((f) => !f.startsWith(SKIP_PREFIX) && /\.(md|txt)$/i.test(f))
+  .filter((f) => !ONLY || f.includes(ONLY))
   .sort();
 
 if (!files.length) {
@@ -129,6 +142,7 @@ if (!files.length) {
   cleanupTmp();
   process.exit(1);
 }
+if (ONLY) console.log(`--only=${ONLY}：命中 ${files.length} 篇`);
 
 // ---------- 解析 + 切片（这一步纯本地，dry 模式到此为止） ----------
 /** 一篇待入库的素材：解析后的正文 + 切片结果。 */
