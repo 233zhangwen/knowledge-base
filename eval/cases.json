@@ -92,8 +92,9 @@
     "section": "五、设备与信息安全",
     "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
     "question": "可以在办公电脑上安装未经信息技术部批准的软件吗？",
-    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
-    "answerMustContain": ["禁止"]
+    "expectChunks": [{ "index": 5, "snippet": "端管理软件，并开启全盘加密" }],
+    "answerMustContain": null,
+    "answerAnyOf": [["禁止", "不可以", "不能", "不得", "不允许"]]
   },
   {
     "id": "c13",
@@ -500,5 +501,103 @@
       }
     ],
     "answerMustContain": ["5 月"]
-  }
+  },
+  {
+      "id": "m01",
+      "section": "多跳·桥接（转正 × 折算）",
+      "documentTitle": "I-星海科技实习与试用期管理办法.md",
+      "question": "员工 7 月转正，计算当年带薪年假时，前面的那几个月要不要算进折算范围里？",
+      "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由" }],
+      "evidence": [
+        { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 1 },
+        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 2 }
+      ],
+      "answerMustContain": null,
+      "answerAnyOf": [["不计入", "不算", "不包括", "排除在", "不计算在内"]]
+    },
+    {
+      "id": "m02",
+      "section": "多跳·组合（研发中心 × 母公司标准）",
+      "type": "compose",
+      "minHops": 2,
+      "documentTitle": "F-星海科技成都研发中心管理制度.md",
+      "question": "在成都研发中心上班，结婚可以休多少天婚假？",
+      "expectChunks": [{ "index": 5, "snippet": "婚假、丧假、产假按国家规定与母公司标准执行" }],
+      "evidence": [
+        { "documentTitle": "F-星海科技成都研发中心管理制度.md", "index": 5 },
+        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 2 }
+      ],
+      "answerMustContain": ["12"],
+      "answerAnyOf": null
+    },
+    {
+      "id": "m03",
+      "section": "多跳·组合（研发中心绩效 × 母公司口径）",
+      "type": "compose",
+      "minHops": 2,
+      "documentTitle": "F-星海科技成都研发中心管理制度.md",
+      "question": "成都研发中心的绩效 S 档最多能占多少人？这个比例比母公司高还是低？",
+      "expectChunks": [{ "index": 3, "snippet": "效考核每季度一次，结果分为 S、A、B、C 四档" }],
+      "evidence": [
+        { "documentTitle": "F-星海科技成都研发中心管理制度.md", "index": 3 },
+        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 5 }
+      ],
+      "answerMustContain": ["15"],
+      "answerAnyOf": [["高", "更宽", "高于", "多出"]]
+    },
+    {
+      "id": "m04",
+      "section": "多跳·桥接（旧版数字 × 现行版废止声明）",
+      "documentTitle": "E-星海科技员工手册(2024版).md",
+      "question": "2024 版员工手册里，带薪年假是多少天？那个标准现在还能照着执行吗？",
+      "expectChunks": [{ "index": 1, "snippet": "5 日前汇总并公示" }],
+      "evidence": [
+        { "documentTitle": "E-星海科技员工手册(2024版).md", "index": 1 },
+        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 8 }
+      ],
+      "answerMustContain": ["12"],
+      "answerAnyOf": [["废止", "失效", "不再适用", "无效", "已被", "不能"]]
+    },
+    {
+      "id": "m05",
+      "section": "多跳·术语桥接（外包人员 × 秘密级定义）",
+      "documentTitle": "I-星海科技实习与试用期管理办法.md",
+      "question": "外包人员可以接触客户的合同条款吗？",
+      "expectChunks": [{ "index": 3, "snippet": "外包人员不属于公司员工" }],
+      "evidence": [
+        { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 3 },
+        { "documentTitle": "H-星海科技信息安全与数据合规管理办法.md", "index": 0 }
+      ],
+      "answerMustContain": null,
+      "answerAnyOf": [["不可以", "不能", "不得", "禁止", "不允许"]]
+    },
+    {
+      "id": "m06",
+      "section": "多跳·组合（出差伙食补助 × 两套标准）",
+      "documentTitle": "G-星海科技差旅与费用管理办法.md",
+      "question": "出差期间每天的伙食补助是多少？不同制度里的标准一样吗？",
+      "expectChunks": [{ "index": 3, "snippet": "返还个人" }],
+      "evidence": [
+        { "documentTitle": "G-星海科技差旅与费用管理办法.md", "index": 3 },
+        { "documentTitle": "F-星海科技成都研发中心管理制度.md", "index": 2 }
+      ],
+      "answerMustContain": ["120"],
+      "answerAnyOf": [["100", "不一致", "不同", "不一样"]]
+    },
+    {
+      "id": "m07",
+      "section": "多跳·组合（实习生 × 折算规则，三证据）",
+      "type": "compose",
+      "minHops": 3,
+      "documentTitle": "I-星海科技实习与试用期管理办法.md",
+      "question": "实习生实习期间有年假吗？实习结束转正之后又是怎么算的？",
+      "expectChunks": [{ "index": 2, "snippet": "150 元、硕士生每日 200 元" }],
+      "evidence": [
+        { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 2 },
+        { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 1 },
+        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 2 }
+      ],
+      "answerMustContain": ["折算"],
+      "answerAnyOf": [["没有", "不享受", "无", "不适用", "不能享受"]]
+    }
 ]

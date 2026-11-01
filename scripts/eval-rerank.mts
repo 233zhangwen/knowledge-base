@@ -18,6 +18,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+
+import { matchAnswer } from './lib/answer-match.mjs';
 import pg from 'pg';
 
 // 评测跑起来时日志只会刷屏，降级情况最后统一统计
@@ -83,6 +85,7 @@ type EvalCase = {
   expectChunks: { index: number; snippet: string }[];
   confuserChunks?: { documentTitle: string; index: number; snippet: string; note?: string }[];
   answerMustContain?: string[] | null;
+  answerAnyOf?: string[][] | null;
 };
 
 /** 一条检索命中。rerank 只需要 id + content，其余字段用于指标计算。 */
@@ -401,9 +404,12 @@ for (const c of cases) {
      * 再检查 answerMustContain 里的关键词有没有出现。
      * 这不是"模型好不好"的评测 —— 是"检索给的料有没有让模型答对"的评测。
      */
-    if (WITH_LLM && LLM_ARMS.has(arm.key) && Array.isArray(c.answerMustContain)) {
+    const hasCriteria = Array.isArray(c.answerMustContain) || Array.isArray(c.answerAnyOf);
+    if (WITH_LLM && LLM_ARMS.has(arm.key) && hasCriteria) {
       const answer = await askLlm(c.question, hits.slice(0, TOP_K));
-      const missed = (c.answerMustContain as string[]).filter((m) => !answer.includes(m));
+      // W16：判据与 eval-agent 共用（旧写法不过滤空白，'8 周' vs '8周' 会被误判为错）
+      const verdict = matchAnswer(answer, c);
+      const missed = [...verdict.missed, ...verdict.failedGroups.map((gp) => gp.join('/'))];
       r.answers.push({ id: c.id, ok: missed.length === 0, missed, answer: answer.slice(0, 160) });
     }
   }
