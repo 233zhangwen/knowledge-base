@@ -81,7 +81,9 @@ flowchart LR
 | 向量 | bge-m3，1024 维，cosine | `src/lib/embedding.ts` |
 | 召回 | 两段式：粗排 RECALL_K = 10 → 精排 TOP_K = 5 | `src/lib/retrieve.ts` |
 | 精排 | bge-reranker-v2-m3（cross-encoder），3s 超时即降级 | `src/lib/rerank.ts` |
-| Agent 循环 | MAX_STEPS = 5（防失控封顶） | `src/lib/agent-llm.ts` |
+| Agent 循环 | MAX_STEPS = 6（防失控封顶） | `src/lib/agent-llm.ts` |
+| 检索预算 | MAX_RETRIEVALS = 3（超限提示作答，不抛错） | `src/lib/agent-llm.ts` |
+| 上下文去重 | 已见块只回编号占位，不重复注入正文 | `src/lib/context-budget.ts` |
 | 上下文历史 | 最近 3 轮（6 条），倒序取再反转 | `src/lib/history.ts` |
 | 采样 | temperature = 0 + thinking disabled（线上与评测同源） | `src/lib/agent-prompt.json` |
 
@@ -162,7 +164,9 @@ node scripts/seed-injection-fixtures.mjs --clean    # 收尾
 
 ```bash
 node scripts/eval-agent.mjs --check # 校验评测集指纹与配置对齐（防标注漂移）
-node scripts/eval-agent.mjs         # Agent 路径：检索层 recall + 答案层关键词 + 成本
+# Agent 路径（跑的是生产代码：真 retrieve + 真 runAgentTurn）
+node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-agent.mts
+#   --check 结构校验 / --probe 多跳题资格 / --only=id1,id2 / --verbose
 node scripts/eval.mjs               # 旧路径对照（必检索架构，已退役，留作基线）
 ```
 
@@ -170,6 +174,8 @@ node scripts/eval.mjs               # 旧路径对照（必检索架构，已退
 > 保留在此只是为了记录扩库前的水平，不要拿新数字和它们比。
 
 **基线（2026-10-26，必检索架构）**：recall@1 = 0.740，recall@3 = 0.960，recall@5 = 1.000；答案层 25/25。
+
+> ⚠️ **以下 Agent 基线在 W16 修正评测漂移后作废**（跑的是没有 rerank 的手抄检索，不可比）。保留作为记录。
 
 **Agent 路径（2026-10-29，W11 退役前回归）**：recall@1 = 0.740，recall@3 = 0.960，recall@5 = 1.000；答案层 **25/25 零退化**；平均 1.08 次检索/问（含自发二次检索 case）。两次运行间 recall@3 在 0.960~1.000 间波动（#23 在测量噪声边界跳变）——temperature=0 稳住命中数，稳不住一切。Agent 时代的成本账如实记录：**知识类问题更贵**（in ≈2.2x：工具 schema + 多步消息重发；out ≈5.5x），收益在闲聊（零检索）与多跳（旧架构做不到）。
 
@@ -187,6 +193,24 @@ node scripts/eval.mjs               # 旧路径对照（必检索架构，已退
 答案层 42/45 → **44/45**。最有价值的一条不是指标，是 **c14**：没有 rerank 时它答
 「S 档最多 5%」——那是 2024 版手册的数字，系统忠实地照抄了一份已废止的文件，且自己不知道。
 完整记录见 [`eval/rerank-results.md`](eval/rerank-results.md)。
+
+**W16 多跳与上下文压缩（2026-11-01）**：先修了一处持续两个 W 的评测漂移——`eval-agent.mjs` 自带一份
+手抄的检索 SQL（没有 rerank、没有围栏、没有 suspicious），等于在评测一个线上不存在的系统。
+改成直接 `import` 生产 `retrieve` 与 `runAgentTurn` 后，45 条基线的真实成绩是 **45/45**（此前记录为 44/45，
+其中 c19 被判成"能力边界"，其实真代码一次就跑对了）。同时修了判据：关键词匹配不过滤空白与同义词，
+把「8周」 vs 「8 周」、「不可以」 vs 「禁止」判成错，方向固定为"把对的判成错的"，会让人去治假病。
+
+多跳部分：造 7 条候选用 `--probe` 筛，只有 3 条通过（40 块的库上，同领域问题 rerank 一次就端全了证据）。
+指路句检测从 prompt 规则下沉到代码（正则判不准条件句，会让单跳题平均检索从 1.13 涨到 2.63）。
+检索预算 3 次 + 已见块去重：重复块率 26% → 20.5%。
+
+| 指标 | 起点（45 条，无规则） | 终版（52 条） |
+|---|---|---|
+| 答案层 | 45/45 | **52/52** |
+| 平均检索 | 1.13 次/问 | 2.42 次/问 |
+| input token | 3629/问 | 7535/问（+107%，**超出预算判据，如实记录**） |
+
+完整数据见 [`eval/multihop-results.md`](eval/multihop-results.md)。
 
 两轮调优（完整记录见 [`eval/RESULTS.md`](eval/RESULTS.md)）：
 
@@ -284,6 +308,7 @@ src/
     ├── embedding.ts           # bge-m3 / 1024 维
     ├── retrieve.ts            # 两段式检索：粗排 RECALL_K → 精排 TOP_K（工具 execute 内调用）
     ├── rerank.ts              # cross-encoder 精排 + 降级（永不抛异常）
+    ├── context-budget.ts      # 上下文预算：已见块占位 + 指路句检测（纯函数）
     ├── agent-llm.ts           # Agent 工具循环：AI SDK fullStream → 四类事件（ADR-3）
     ├── agent-prompt.json      # Agent prompt 单一来源（身份/检索纪律/全局编号/禁 markdown）
     ├── llm.ts                 # 原生 fetch SSE（旧路径，ADR-3 前身，评测对照仍用）
