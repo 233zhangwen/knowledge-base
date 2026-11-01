@@ -161,14 +161,22 @@ node scripts/seed-injection-fixtures.mjs --clean    # 收尾
 
 ## 评测
 
-不凭感觉调参。W6 建了一套 25 条的评测集（覆盖 12 个章节 / 9 个切片，含改述与跨片段计算 case），检索层与答案层分开测：
+不凭感觉调参。W6 建了一套 25 条的评测集（覆盖 12 个章节 / 9 个切片，含改述与跨片段计算 case），检索层与答案层分开测。
+W15 扩到 45 条、W16 扩到 52 条（含 3 条真多跳），语料 6 篇 / 39 块：
 
 ```bash
-node scripts/eval-agent.mjs --check # 校验评测集指纹与配置对齐（防标注漂移）
-# Agent 路径（跑的是生产代码：真 retrieve + 真 runAgentTurn）
-node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-agent.mts
-#   --check 结构校验 / --probe 多跳题资格 / --only=id1,id2 / --verbose
-node scripts/eval.mjs               # 旧路径对照（必检索架构，已退役，留作基线）
+# 语料 6 篇全部在仓库里（kb-fixtures/），从零建库：
+npm run seed:kb            # 写「知识库C」；--only=C- 只灌一篇；--dry --show 只看切片
+npm run backfill:meta      # 抽生效日期 / 废止关系
+
+# 两道标注校验（文档一改必跑，查的不是一回事）
+node scripts/eval.mjs --check   # 结构：snippet 指纹是否仍是块首
+npm run check:cases             # 语义：期望块里到底有没有答案（给可疑清单，不给结论）
+
+# 全量评测（跑的是生产代码：真 retrieve + 真 runAgentTurn）
+npm run eval:agent         #   --check 结构 / --probe 多跳资格 / --only=id1,id2 / --verbose
+npm run eval:rerank        #   检索层四档对照（V5/R10/R20/R50）
+npm run realign:cases      #   文档重切片后重锚用例（默认 dry，--write 才落盘）
 ```
 
 > ⚠️ **以下两组基线在 2026-10-31 扩库后作废**（库从 9 块变 40 块，候选池从 9 变 40，不可比）。
@@ -236,6 +244,30 @@ node scripts/eval.mjs               # 旧路径对照（必检索架构，已退
 前者省的是一次检索，后者花掉的是一次检索。
 
 完整数据与两次判据纠错记录见 [`eval/meta-results.md`](eval/meta-results.md)。
+
+**W18 基线重建：把被评测的文档收回仓库（2026-11-01）**：W17 的 spec 里留着一句"已知问题"——
+C 文档的 H1 带着 `· W5 专用`、开头三段是写给测试者看的说明。当时不修的理由是"改文档就得重切片，
+重切片 52 条指纹全废"。那个判断暴露了更严重的事：**C 只存在于线上库里，52 条里有 31 条指向一份别人拿不到的文件**。
+
+做法是只清理、不动事实：正文 12 节一字未改，H1 换成 `星海科技员工手册（2026 版）`，
+三段说明换成 E/F/G/H/I 同款公文头 → **9 块变 8 块**。然后补了一条可重复的路
+`npm run realign:cases`：按"旧块正文在新文档里的去向"重算索引与指纹，85 处锚点
+（53 期望块 / 17 负例块 / 15 多跳证据）自动 61 处、人工指定 24 处，写回是字符串级替换（diff 只动该动的行）。
+
+| | 答案层 | 检索/问 | token/问 | 证据覆盖 |
+|---|---|---|---|---|
+| 改前（本次实测） | 52/52 | 1.42 | 4571 | 100% |
+| **改后** | **51/52** | **1.40** | **4454** | 98.1% |
+
+**掉的那一条是 v04，原因查到底了**：答案句「未休年假按日均工资的 2 倍折算」所在的块，
+从 378 字（交接+结算+附则）变成 460 字（多了"辞职提前 30 天"一段），同一句话的余弦
+**0.5818 → 0.5271**，直接掉出粗排前 10 —— 连 rerank 都没轮到它。不是判据、不是模型，
+是 500 字定长贪心切片的抽签结果变了。**这一条如实留着**：修它只能动切片策略，
+而那会让 52 条再重锚一次，也无法证明"是改进"而非"再抽一次签"。
+
+顺带查出两处老问题：c19 的 `expectChunks[0]` 从建库起就指向了**考勤块**（两道校验都放行，
+因为 `check:cases` 只看"有没有任何一个期望块含关键词"）；c16 的判据 `5%` 漏了「百分之五」这种写法。
+完整记录见 [`eval/baseline-rebuild.md`](eval/baseline-rebuild.md)。
 
 两轮调优（完整记录见 [`eval/RESULTS.md`](eval/RESULTS.md)）：
 
