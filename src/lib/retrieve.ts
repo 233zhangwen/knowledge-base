@@ -82,6 +82,16 @@ export type RetrievedChunk = {
    * 两者绝不能混用或互相比较。降级时为 null（那一轮根本没算分）。
    */
   rerankScore?: number | null;
+
+  // ---------- W17：文档级元数据，随块一起走 ----------
+  /** 文档内 H1。展示优先用它（比文件名干净：没有 `E-` 前缀和 `.md` 后缀）。 */
+  docTitle: string | null;
+  /** `YYYY-MM-DD`，抽不到为 null。 */
+  effectiveFrom: string | null;
+  /** 废止这份文档的那份文档的 `Document.title`，null = 不知道或仍现行。 */
+  supersededBy: string | null;
+  /** 取代者的 H1，仅用于展示。 */
+  supersededByDocTitle: string | null;
 };
 
 type Row = {
@@ -90,6 +100,10 @@ type Row = {
   chunkIndex: number;
   documentId: string;
   title: string;
+  docTitle: string | null;
+  effectiveFrom: string | null;
+  supersededBy: string | null;
+  supersededByDocTitle: string | null;
   similarity: number;
   suspicious: boolean;
 };
@@ -117,10 +131,26 @@ export async function recall(
            c."chunkIndex",
            d.id as "documentId",
            d.title,
+           d."docTitle",
+           d."effectiveFrom",
+           d."supersededBy",
+           sup."docTitle" as "supersededByDocTitle",
            (d."suspiciousAt" is not null) as suspicious,
            1 - (c.embedding <=> ${vectorLiteral}::vector) as similarity
     from "Chunk" c
     join "Document" d on d.id = c."documentId"
+    /*
+     * W17：取取代者的 H1，只为展示（"已被《星海科技员工手册（2026 完整版）》废止"
+     * 比"已被 C-星海科技员工手册-完整版(B1专用).md 废止"可读得多）。
+     *
+     * 条件里带 sup."kbId" = d."kbId" 不能省：跨库可能刚好有同名的
+     * 《员工手册》，不带这个条件就会 join 到别的库那一份，
+     * 模型于是给出一份它根本检索不到的文件名当依据。
+     *
+     * ⚠️ 这个注释体在模板字符串里，**不能出现反引号** —— 那是模板的定界符，
+     * 写一个就把 SQL 从中截断，报错还指在别的行上。
+     */
+    left join "Document" sup on sup.title = d."supersededBy" and sup."kbId" = d."kbId"
     where d."kbId" = ${kbId} and d.status = 'ready'
     order by c.embedding <=> ${vectorLiteral}::vector
     limit ${limit}
@@ -135,6 +165,10 @@ export async function recall(
     // pg 的 numeric/double precision 经 Node 驱动回来是字符串，必须显式转 Number
     similarity: Number(r.similarity),
     suspicious: Boolean(r.suspicious),
+    docTitle: r.docTitle ?? null,
+    effectiveFrom: r.effectiveFrom ?? null,
+    supersededBy: r.supersededBy ?? null,
+    supersededByDocTitle: r.supersededByDocTitle ?? null,
   }));
 
   /**

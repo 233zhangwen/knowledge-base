@@ -16,6 +16,7 @@
  *   这是验收 C2 能过的根本原因。
  */
 import { splitText } from './chunk';
+import { extractAndSaveDocMeta, refreshKbDocMeta } from './doc-meta-store';
 import { embedTexts } from './embedding';
 import { log } from './log';
 import { prisma } from './prisma';
@@ -45,7 +46,7 @@ export const MAX_CHUNKS_PER_DOCUMENT = 200;
 export async function indexDocument(documentId: string): Promise<void> {
   const document = await prisma.document.findUnique({
     where: { id: documentId },
-    select: { id: true, content: true },
+    select: { id: true, content: true, kbId: true },
   });
 
   if (!document) {
@@ -81,6 +82,25 @@ export async function indexDocument(documentId: string): Promise<void> {
         err: error instanceof Error ? error.message : String(error),
       });
     }
+  }
+
+  /**
+   * W17：抽文档级元数据（生效日期、废止声明、H1 标题）。
+   *
+   * 位置与 suspicious 扫描并列，理由也一样：**重索引也要跑**。
+   * 用户重跑 reindex 时 content 不变，但抽取逻辑可能已经升级了（比如新增了一种公文头格式），
+   * 只挂在首次上传路径上就永远补不上。
+   *
+   * 同样单独 try/catch：元数据是增益信息，抽不到的时候检索照跑，
+   * 只是模型少一个判断新旧版的依据。让它把索引带崩是本末倒置。
+   */
+  try {
+    await extractAndSaveDocMeta(document.id, document.content);
+  } catch (error) {
+    log.warn('document.meta.extract_failed', {
+      docId: document.id.slice(0, 8),
+      err: error instanceof Error ? error.message : String(error),
+    });
   }
 
   const chunks = splitText(document.content);
@@ -140,6 +160,23 @@ export async function indexDocument(documentId: string): Promise<void> {
     where: { id: documentId },
     data: { status: 'ready', error: null },
   });
+
+  /**
+   * W17：状态改成 ready **之后**再重算废止关系。
+   *
+   * 顺序不能反：refreshKbDocMeta 只把 ready 的文档当作"施加方"，
+   * 这一篇此刻还是 processing，先算的话它声称的"废止了 X"会被忽略，
+   * 等下一次有人上传才会补上 —— 那就是一个只在特定时序下出现的静默缺失。
+   */
+  try {
+    const { total, changed } = await refreshKbDocMeta(document.kbId);
+    if (changed) log.info('document.meta.resolved', { kbId: document.kbId.slice(0, 8), total, changed });
+  } catch (error) {
+    log.warn('document.meta.resolve_failed', {
+      kbId: document.kbId.slice(0, 8),
+      err: error instanceof Error ? error.message : String(error),
+    });
+  }
 }
 
 /**

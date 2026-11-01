@@ -18,6 +18,6 @@
     "historyRule": "用户会就上文继续追问。追问里若出现代词（它、那、第二项、后者的一半），一律先从上文确定指代对象，再作答。"
   },
   "contextEmpty": "（本次没有检索到任何参考资料）",
-  "contextItem": "<<<DOC [{no}] 《{title}》第 {page} 段>>>\n{content}\n<<<END DOC>>>",
+  "contextItem": "<<<DOC [{no}] 《{title}》第 {page} 段{meta}>>>\n{content}\n<<<END DOC>>>",
   "userPrefix": "参考资料：\n\n{context}\n\n问题：{question}"
 }

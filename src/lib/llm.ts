@@ -14,6 +14,7 @@
  *   enable_thinking: false 无效（思考 token 照常计费）。
  *   关闭后首字延迟约 630ms，是验收 B1「1.5 秒出首字」的基线。
  */
+import { fenceMetaLabel, statusOf } from './doc-meta';
 import { log } from './log';
 import PROMPT from './rag-prompt.json';
 import type { RetrievedChunk } from './retrieve';
@@ -81,8 +82,17 @@ export function buildRagMessages(
         .map((c, i) =>
           fill(PROMPT.contextItem, {
             no: String(i + 1),
-            title: c.documentTitle,
+            // W17：优先文档内 H1，去掉文件名里的 `E-` 前缀与 `.md`
+            title: c.docTitle || c.documentTitle,
             page: String(c.chunkIndex + 1),
+            // 与 agent 路径共用同一份元数据文字：两条路径的围栏头不能各自漂移，
+            // 否则同一个问题在 RAG 与 Agent 下会看到不同的证据描述
+            meta: fenceMetaLabel({
+              effectiveFrom: c.effectiveFrom,
+              status: statusOf(c.effectiveFrom, c.supersededBy),
+              supersededBy: c.supersededBy,
+              supersededByDocTitle: c.supersededByDocTitle,
+            }),
             content: c.content,
           }),
         )

@@ -21,6 +21,11 @@ function chunk(over: Partial<RetrievedChunk> = {}): RetrievedChunk {
     documentTitle: '员工手册',
     similarity: 0.9,
     suspicious: false,
+    // W17：元数据字段默认空 —— 测试关心的是拼装结构，不是版本判定
+    docTitle: null,
+    effectiveFrom: null,
+    supersededBy: null,
+    supersededByDocTitle: null,
     ...over,
   };
 }
@@ -57,6 +62,32 @@ describe('buildRagMessages · 引用编号', () => {
     expect(userContent.match(/<<<END DOC>>>/g)).toHaveLength(2);
     // citationRule 的 {max} 必须等于实际条数
     expect(messages[0].content).toContain('[1] 到 [2]');
+  });
+
+  it('W17：元数据渲染进围栏头，且优先用 docTitle 而不是文件名', () => {
+    // 文件名是 `E-星海科技员工手册(2024版).md`，对模型是噪声；
+    // docTitle 才是文档内的 H1，也是废止声明里引用的那个写法
+    const messages = buildRagMessages('婚假几天', [
+      chunk({
+        documentTitle: 'E-星海科技员工手册(2024版).md',
+        docTitle: '星海科技员工手册（2024 版）',
+        effectiveFrom: '2024-01-01',
+        supersededBy: 'C-星海科技员工手册-完整版(B1专用).md',
+        supersededByDocTitle: '星海科技员工手册（2026 完整版）',
+      }),
+    ]);
+    const userContent = messages.at(-1)!.content;
+
+    expect(userContent).toContain('《星海科技员工手册（2024 版）》');
+    expect(userContent).not.toContain('E-星海科技');
+    expect(userContent).toContain('2024-01-01 生效');
+    expect(userContent).toContain('已废止');
+    expect(userContent).toContain('星海科技员工手册（2026 完整版）');
+  });
+
+  it('W17：没有元数据的片段，围栏头保持原样（不留下空的 · ）', () => {
+    const messages = buildRagMessages('年假几天', [chunk({ documentTitle: '手册A' })]);
+    expect(messages.at(-1)!.content).toContain('<<<DOC [1] 《手册A》第 1 段>>>');
   });
 
   it('一条片段都不召回时，硬话写进 system，且用户消息里是"没有参考资料"', () => {

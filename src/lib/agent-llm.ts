@@ -19,6 +19,7 @@ import { jsonSchema, stepCountIs, streamText, tool } from 'ai';
 import type { Citation } from './chat-protocol';
 import PROMPT from './agent-prompt.json';
 import { pointerHintText, pointerHints, seenPlaceholder } from './context-budget';
+import { fenceMetaLabel, statusOf } from './doc-meta';
 import { log } from './log';
 import { retrieve, type RetrievedChunk } from './retrieve';
 import { fenceChunk } from './untrusted';
@@ -163,12 +164,30 @@ function formatChunks(chunks: RetrievedChunk[], ledger: CitationLedger): string 
        *
        * suspicious 来自 retrieve 的 d."suspiciousAt"，只影响是否多一行提示，不改变编号逻辑。
        */
+      /**
+       * W17：标题优先用文档内 H1，元数据并进围栏头。
+       *
+       * `docTitle || documentTitle`：H1 是「星海科技员工手册（2024 版）」，
+       * 文件名是「E-星海科技员工手册(2024版).md」—— 后者带着测试脚手架的痕迹
+       * （单字母前缀、扩展名），对模型是纯噪声。有 H1 就用 H1。
+       *
+       * metaLabel 的内容由 doc-meta.ts 算，这里只负责传：
+       * 现行版只有日期，已废止版补一句"被谁取代"。
+       */
       return fenceChunk({
         no,
-        title: c.documentTitle,
+        title: c.docTitle || c.documentTitle,
         chunkIndex: c.chunkIndex,
         content: c.content,
         suspicious: c.suspicious,
+        metaLabel: docMetaEnabled()
+          ? fenceMetaLabel({
+              effectiveFrom: c.effectiveFrom,
+              status: statusOf(c.effectiveFrom, c.supersededBy),
+              supersededBy: c.supersededBy,
+              supersededByDocTitle: c.supersededByDocTitle,
+            })
+          : '',
       });
     })
     .join('\n\n');
@@ -198,9 +217,52 @@ function formatChunks(chunks: RetrievedChunk[], ledger: CitationLedger): string 
    * 收窄到 top-1 的逻辑是：**排第一的块如果指向别处，说明答案确实在别处**；
    * 排第五的块顺带提到另一份文件，多半只是同章节的邻居。
    */
-  const names = pointerHints(chunks.slice(0, 1));
+  const names = pointerHintsEnabled() ? pointerHints(chunks.slice(0, 1)) : [];
   if (names.length) log.info('agent.pointer', { names });
   return names.length ? `${body}\n\n${pointerHintText(names)}` : body;
+}
+
+/**
+ * 指路提示的开关（W16 加，W17 改成默认关）。
+ *
+ * ## 为什么默认关掉了
+ *
+ * W16 加它是因为 m02 那种「婚假按母公司标准执行」的指针句，当时确实让 m02 从错变对。
+ * 但 W17 做了四组对照（`eval/meta-results.md`），发现救 m02 的其实是另一条东西：
+ *
+ * | 组 | 元数据 | 提示 | 检索/问 | token/问 |
+ * |---|---|---|---|---|
+ * | A0 | ✗ | ✗ | 2.04 | 6486 |
+ * | A1 | ✓ | ✗ | **1.44** | **4641** |
+ * | A2 | ✗ | ✓ | 2.25 | 6703 |
+ * | A3 | ✓ | ✓ | 1.52 | 4730 |
+ *
+ * 提示在两种情况下都让检索变多：无元数据时 2.04→2.25，有元数据时 1.44→1.52。
+ * 这和 W16 当时的观测方向一致（那次是 1.13→2.63）—— 两次独立实验都指向同一个结论：
+ * **在工具结果里追加一句"你要不要再去查一下"，模型就会真的去查**，而大多数时候它
+ * 已经拿到了需要的证据。多出来的那一次检索要付一次完整的前向 + 一次完整的上下文。
+ *
+ * ## 为什么保留代码而不是删掉
+ *
+ * 它是「元数据抽不到」时的唯一兜底（用户传的是扫描件 PDF、英文文档、或者压根没有
+ * 生效日期的内部通知）。数据显示这个兜底现在也不划算，但那是**在当前这 6 篇文档上**
+ * 测出来的；换成一份全新的库，结论未必一样。留一个 `AGENT_POINTER_HINT=on` 的成本
+ * 是零，删掉之后要重新写一遍 + 重新标一遍单测。
+ *
+ * ⚠️ 它不是给运维调的产品配置，是评测用的实验条件。线上的行为应该是确定的。
+ */
+function pointerHintsEnabled(): boolean {
+  return process.env.AGENT_POINTER_HINT === 'on';
+}
+
+/**
+ * 元数据注入的开关（W17 加），默认开。
+ *
+ * 关掉的场景只有一个：跑对照实验，验证"省下的检索确实是元数据带来的"。
+ * 别在生产上关 —— 关了之后模型又回到分不清新旧版的状态，而这个状态不会报错。
+ */
+function docMetaEnabled(): boolean {
+  return process.env.AGENT_DOC_META !== 'off';
 }
 
 function makeRetrieveTool(kbId: string, ledger: CitationLedger, budget: { used: number }) {

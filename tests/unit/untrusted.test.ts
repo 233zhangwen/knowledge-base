@@ -76,6 +76,27 @@ describe('fenceChunk · 资料围栏', () => {
     expect(no).not.toContain('系统标记');
   });
 
+  it('metaLabel 拼在围栏头末尾、闭合尖括号之前', () => {
+    // W17：位置是有讲究的 —— 必须在 >>> 之前，否则那一行不再是完整的开标签
+    const out = fenceChunk({
+      no: 3,
+      title: '星海科技员工手册（2024 版）',
+      chunkIndex: 0,
+      content: 'x',
+      metaLabel: ' · 2024-01-01 生效 · 已废止',
+    });
+    expect(out.split('\n')[0]).toBe(
+      '<<<DOC [3] 《星海科技员工手册（2024 版）》第 1 段 · 2024-01-01 生效 · 已废止>>>',
+    );
+  });
+
+  it('metaLabel 省略或为空串时不留下多余分隔符', () => {
+    const a = fenceChunk({ no: 1, title: 't', chunkIndex: 0, content: 'c' });
+    const b = fenceChunk({ no: 1, title: 't', chunkIndex: 0, content: 'c', metaLabel: '' });
+    expect(a).toBe(b);
+    expect(a.split('\n')[0]).toBe('<<<DOC [1] 《t》第 1 段>>>');
+  });
+
   it('片段内容里出现 <<<END DOC>>> 时，不能把围栏提前闭合', () => {
     // 目前实现是「原样包裹」，所以这条用例记录的是**已知缺口**：
     // 攻击者可以在文档里写一个假闭合标签，让后面的内容跑到围栏外。
