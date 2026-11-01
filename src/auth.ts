@@ -2,6 +2,7 @@ import NextAuth from 'next-auth';
 import { PrismaAdapter } from '@auth/prisma-adapter';
 
 import { authConfig } from '@/auth.config';
+import { ensureOrganization } from '@/lib/organization';
 import { prisma } from '@/lib/prisma';
 
 /**
@@ -57,6 +58,22 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         session.user.id = token.id as string;
       }
       return session;
+    },
+  },
+
+  /**
+   * W19：登录即确保有组织（首次登录建"某某 的空间"，之后幂等返回）。
+   *
+   * 为什么用事件而不是放在 jwt 回调里：jwt 回调每次请求都会跑，
+   * 在里面做写库会变成"每个请求都可能写一次"。events.signIn 只在真正登录时触发。
+   *
+   * ⚠️ v5 的事件是 fire-and-forget：这里抛错不会让登录失败，只会被日志吞掉。
+   *    所以 requireTenant 里还有一层兜底（找不到组织就地补建），两条路都留着。
+   */
+  events: {
+    async signIn({ user }) {
+      if (!user?.id) return;
+      await ensureOrganization({ id: user.id, name: user.name, email: user.email });
     },
   },
 });

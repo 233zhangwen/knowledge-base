@@ -35,8 +35,13 @@ model User {
   sessions Session[]
 
   // 业务关系
-  knowledgeBases KnowledgeBase[]
-  conversations  Conversation[]
+  //
+  // W19：这里原本是 knowledgeBases / conversations 两个直接关系。
+  // 租户边界从「用户」抬到「组织」之后，用户不再直接拥有业务数据，
+  // 而是通过 Membership 加入组织 —— 关系挂在 Membership 上。
+  //
+  // 注意：用户销号不应该带走组织的数据。组织是长期实体，成员是流动的。
+  memberships Membership[]
 }
 
 model Account {
@@ -74,7 +79,50 @@ model VerificationToken {
 }
 
 // ============================================================
-// 二、业务表
+// 二、租户（W19）
+//
+// 为什么需要这一层：W1–W18 的数据边界是「用户本人」—— KnowledgeBase.userId
+// 既是"谁能访问"也是"谁建的"。两个语义混在一个字段里，等要做多人协作时
+// 就没有字段能回答"谁建的"了。
+//
+// Organization 是**计费与隔离的单位**，Membership 是**人属于哪个组织**。
+// 一个用户可以属于多个组织（转岗、外包、兼职），所以中间表是必需的。
+// ============================================================
+
+model Organization {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  memberships    Membership[]
+  knowledgeBases KnowledgeBase[]
+  conversations  Conversation[]
+
+  // W21 会在这里挂 usageRecords（按月问答次数）。
+  // 现在不建表：配额还没有任何逻辑，建一张空表只会让人以为已经做了。
+}
+
+/// 用户 × 组织。role 先只有 owner（W19 只做底座，W20 加 member 与权限矩阵）。
+model Membership {
+  id     String @id @default(cuid())
+  role   String @default("owner") // owner | member（W20）
+  userId String
+  orgId  String
+  createdAt DateTime @default(now())
+
+  user User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  org  Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  // 同一个人在同一组织只能有一条成员记录。
+  // 没有这个约束，"邀请同一个人两次"就会产生两条 owner，权限判断开始靠运气。
+  @@unique([userId, orgId])
+
+  // 每次请求都要走"当前用户 → 他的组织"这一步，这个索引是热路径。
+  @@index([orgId])
+}
+
+// ============================================================
+// 三、业务表
 // ============================================================
 
 model KnowledgeBase {
@@ -84,8 +132,23 @@ model KnowledgeBase {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  userId String
-  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /**
+   * 权限字段：能不能访问。所有查询条件都用它。
+   *
+   * W19 之前这里是 userId（一个字段同时表达"谁能看"和"谁建的"）。
+   * 现在拆成两个：orgId 管访问，createdBy 管审计。
+   */
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /**
+   * 归属字段：谁建的。**故意不做外键**。
+   *
+   * 理由：用户销号后组织的数据要留着（组织是长期实体，成员是流动的），
+   * 做外键就只能 SetNull，那样连"谁建的"都丢了；做 Cascade 更糟，会把库删掉。
+   * 留一个可能悬空的字符串，比丢信息好 —— 和 Document.supersededBy 同一个取舍。
+   */
+  createdBy String
 
   documents     Document[]
   conversations Conversation[]
@@ -250,8 +313,23 @@ model Conversation {
   //   user   User @relation(fields: [userId], references: [id], onDelete: ???)
   kbId   String
   kb     KnowledgeBase @relation(fields: [kbId], references: [id], onDelete: Cascade)
-  userId String
-  user   User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /**
+   * 冗余的租户字段（W19）。kbId 已经隐含了组织，为什么还要存一份？
+   *
+   * 因为查询要**不 join 就能过滤**：列表页 where 是 `{ orgId, kbId }`，
+   * 两个条件都在 Conversation 自己的行上，走索引即可。只靠 kbId → kb.orgId
+   * 意味着每处判断权限都要 join，而 join 写法每处都可能漏一个条件 ——
+   * 直白地冗余一列，比依赖关系推导更难写错。
+   *
+   * 代价（如实记账）：kb 换组织时这里会不同步。本项目没有「转移知识库」功能，
+   * 真要做时必须在同一事务里改两处。**冗余字段的代价永远是"两处要一起改"。**
+   */
+  orgId String
+  org   Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  /// 谁发起的这个会话（审计，无外键，理由同 KnowledgeBase.createdBy）。
+  createdBy String
 
   messages Message[]
 }

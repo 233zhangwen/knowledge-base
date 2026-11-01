@@ -77,3 +77,6 @@ _rt*.txt
 # W15：seed-kb-fixtures.mts 为了复用真实 parse.ts 会生成一份补了 import 后缀的副本，
 # 用完即删。删不掉时也不该入库（它是源码的派生物，不是源码）。
 /.seed-tmp/
+
+# W19 迁移备份（含用户数据，永不入库）
+.backup/
