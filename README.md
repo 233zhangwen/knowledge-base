@@ -5,7 +5,7 @@
 个人知识库问答应用：上传文档 → 解析切片 → 向量化入库 → **Agent 化问答**——由模型决定何时检索（闲聊零检索）、把模糊问题改写成检索问句、需要时多步调用工具，回答带引用溯源，可回溯任意历史会话。
 
 **线上演示**：https://afei-knowledge-base.netlify.app （GitHub 账号登录即可试用）
-**部署与运维手册**：[`docs/DEPLOY.md`](docs/DEPLOY.md) ｜ **评测记录**：[`eval/RESULTS.md`](eval/RESULTS.md)
+**项目说明（10 分钟读完）**：[`docs/PROJECT-BRIEF.md`](docs/PROJECT-BRIEF.md) ｜ **部署与运维手册**：[`docs/DEPLOY.md`](docs/DEPLOY.md) ｜ **评测记录**：[`eval/RESULTS.md`](eval/RESULTS.md)
 
 技术栈：Next.js 16（App Router）· React 19 · TypeScript · Tailwind CSS 4 · NextAuth v5 · Prisma 7 · PostgreSQL（pgvector）· Netlify
 
@@ -335,7 +335,7 @@ Agent 化后引用从"流前快照"变成"流中产物"，协议升到 v2。第�
 
 ## 已知限制（如实记录，不藏）
 
-- **数据质量能击穿答案层**：测试 fixture（员工手册）头部带有一段"本文是虚构测试文档"的说明，它**有意**写进文档、也因此进了检索语料——实测一次模型检索到该块后答出"文档中没有相关内容"，而引用里明明有相关规则（疑似被 meta 文本干扰）。定性：不是代码 bug，是"任何进入语料的文本都会成为上下文"这一事实的活案例。评测期望块不受影响（0 条 case 依赖前言块），故记录不清洗。
+- **任何进入语料的文本都会成为上下文**（污染源已清，规律长期成立）：W6 的测试 fixture 头部曾带着「本文是虚构测试文档」的说明，它**有意**写进文档、也因此进了检索语料——实测一次模型检索到该块后答出「文档中没有相关内容」，而引用里明明有相关规则（疑似被 meta 文本干扰）。定性：不是代码 bug，是"语料即上下文"这一事实的活案例。W18 已把该文档的脚手架痕迹换成正式公文头，现象不再复现；但凡是写进文档的字都会参与检索，这条规律不变。
 - **Agent 对知识类问题更贵**：工具 schema（约 300 token）+ 多步循环重发消息，in ≈2.2x / out ≈5.5x（对照数据见评测节）。收益场景是闲聊与多跳。prompt cache 类优化受国内 provider 能力限制，未做。
 - **生成中途按停，已出引用完整落库**（citations 数组在流外累积），但"边说边查"的罕见路径晚到引用只落库、本轮界面不回填（协议 v2 显式约束：事件行只保证出现在文本前）。
 - **检索相似度存在运行间波动**：同配置两次评测 recall@3 可差 0.04（单条 case 在阈值附近翻转），结论只看门槛不看小数点后第三位。
@@ -375,11 +375,14 @@ src/
     ├── chat-protocol.ts       # 流协议 v1/v2 定义 + 解析器（成对变化，23 条边界用例）
     ├── history.ts             # 会话/消息装载，数据边界校验
     └── storage.ts             # 三驱动对象存储（ADR-7）
-eval/cases.json                # 25 条评测集（带内容指纹）
-scripts/eval-agent.mjs         # Agent 路径评测（--check / 默认，--kb 锁库）
+eval/                          # cases.json 52 条（带内容指纹）+ 四轮评测记录
+scripts/eval-agent.mts         # Agent 路径评测（import 生产代码，不手抄检索）
+scripts/eval-rerank.mts        # 检索层四档对照（V5 / R10 / R20 / R50）
+scripts/realign-cases.mts      # 文档重切片后按内容重锚标注
+scripts/check-case-annotations.mts  # 语义自检：期望块里到底有没有答案
 scripts/eval.mjs               # 旧路径评测（对照）
 scripts/probe-tools.mjs        # tool-calling 探针（换模型时重跑）
-docs/                          # 各周验收 spec + 部署手册
+docs/                          # 各周验收 spec + 部署手册 + 项目说明
 ```
 
 ## Out of Scope（显式不做）
