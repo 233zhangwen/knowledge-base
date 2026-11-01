@@ -25,7 +25,8 @@
     "backfill:meta": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/backfill-doc-meta.mts",
     "eval:agent": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-agent.mts",
     "eval:rerank": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/eval-rerank.mts",
-    "check:cases": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/check-case-annotations.mts"
+    "check:cases": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/check-case-annotations.mts",
+    "realign:cases": "node --experimental-transform-types --import ./scripts/lib/register.mjs scripts/realign-cases.mts"
   },
   "dependencies": {
     "@ai-sdk/openai": "^4.0.104",

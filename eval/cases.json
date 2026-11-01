@@ -2,7 +2,7 @@
   {
     "id": "c01",
     "section": "一、入职与考勤",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "上午最晚几点到岗仍然算正常出勤？",
     "expectChunks": [{ "index": 0, "snippet": "# 星海科技员工手册" }],
     "answerMustContain": ["9:40"]
@@ -10,206 +10,207 @@
   {
     "id": "c02",
     "section": "一、入职与考勤",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "远程办公每周最多可以几天？",
-    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "expectChunks": [{ "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" }],
     "answerMustContain": ["2 天"]
   },
   {
     "id": "c03",
     "section": "二、休假制度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "正式员工每年有多少天带薪年假？",
-    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "expectChunks": [{ "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" }],
     "answerMustContain": ["17"]
   },
   {
     "id": "c04",
     "section": "二、休假制度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "年假最多可以跨年结转几天？",
-    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "expectChunks": [{ "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" }],
     "answerMustContain": ["5 天"]
   },
   {
     "id": "c05",
     "section": "二、休假制度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "全年病假在 10 天以内按什么比例发放工资？",
-    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "expectChunks": [{ "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" }],
     "answerMustContain": ["90%"]
   },
   {
     "id": "c06",
     "section": "二、休假制度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "婚假有多少天？",
-    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "expectChunks": [{ "index": 2, "snippet": "算加班费，二选一且一经确认不可更改。工作日的加班" }],
     "answerMustContain": ["12"]
   },
   {
     "id": "c07",
     "section": "三、年度额度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "年度培训基金是多少钱？",
-    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "expectChunks": [{ "index": 2, "snippet": "算加班费，二选一且一经确认不可更改。工作日的加班" }],
     "answerMustContain": ["8000"]
   },
   {
     "id": "c08",
     "section": "三、年度额度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "团队建设费个人可以单独申领吗？",
-    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "expectChunks": [{ "index": 2, "snippet": "算加班费，二选一且一经确认不可更改。工作日的加班" }],
     "answerMustContain": ["统一支配"]
   },
   {
     "id": "c09",
     "section": "三、年度额度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "年度额度里金额最高的是哪一项？",
-    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "expectChunks": [{ "index": 2, "snippet": "算加班费，二选一且一经确认不可更改。工作日的加班" }],
     "answerMustContain": ["培训基金", "8000"]
   },
   {
     "id": "c10",
     "section": "四、费用报销",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "因公餐费每人每餐的报销上限是多少？",
-    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "expectChunks": [{ "index": 3, "snippet": "附书单，且与本人岗位相关）" }],
     "answerMustContain": ["380"]
   },
   {
     "id": "c11",
     "section": "四、费用报销",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "一线城市出差住宿每晚限额多少？",
-    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "expectChunks": [{ "index": 3, "snippet": "附书单，且与本人岗位相关）" }],
     "answerMustContain": ["600"]
   },
   {
     "id": "c12",
     "section": "五、设备与信息安全",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "可以在办公电脑上安装未经信息技术部批准的软件吗？",
-    "expectChunks": [{ "index": 5, "snippet": "端管理软件，并开启全盘加密" }],
+    "expectChunks": [{ "index": 4, "snippet": "一台笔记本电脑，设备的折旧周期为 4 年。折旧期" }],
     "answerMustContain": null,
     "answerAnyOf": [["禁止", "不可以", "不能", "不得", "不允许"]]
   },
   {
     "id": "c13",
     "section": "五、设备与信息安全",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "机密级文件打印后要怎么处理？",
-    "expectChunks": [{ "index": 5, "snippet": "端管理软件，并开启全盘加密" }],
+    "expectChunks": [{ "index": 4, "snippet": "一台笔记本电脑，设备的折旧周期为 4 年。折旧期" }],
     "answerMustContain": ["碎毁"]
   },
   {
     "id": "c14",
     "section": "六、绩效与调薪",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "绩效 S 档最多占部门人数的多少？",
-    "expectChunks": [{ "index": 5, "snippet": "端管理软件，并开启全盘加密" }],
+    "expectChunks": [{ "index": 4, "snippet": "一台笔记本电脑，设备的折旧周期为 4 年。折旧期" }],
     "answerMustContain": ["10%"]
   },
   {
     "id": "c15",
     "section": "七、培训与成长",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "新员工的导师带训期有多长？",
-    "expectChunks": [{ "index": 6, "snippet": "，形式为午餐会" }],
+    "expectChunks": [{ "index": 5, "snippet": "上年绩效结果挂钩：A 档及以上为 8%，B 档为" }],
     "answerMustContain": ["6 周"]
   },
   {
     "id": "c16",
     "section": "九、申诉与监督",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "举报经查实后奖励怎么计算，有上限吗？",
-    "expectChunks": [{ "index": 6, "snippet": "，形式为午餐会" }],
-    "answerMustContain": ["5%", "20000"]
+    "expectChunks": [{ "index": 6, "snippet": "有异议的，可在结果公示后 5 个工作日内向人力资" }],
+    "answerMustContain": ["20000"],
+    "answerAnyOf": [["5%", "百分之五"]]
   },
   {
     "id": "c17",
     "section": "十、差旅与外派",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "出差期间每日伙食补助是多少？",
-    "expectChunks": [{ "index": 7, "snippet": "违规行为可通过匿名信箱" }],
+    "expectChunks": [{ "index": 6, "snippet": "有异议的，可在结果公示后 5 个工作日内向人力资" }],
     "answerMustContain": ["120"]
   },
   {
     "id": "c18",
     "section": "十、差旅与外派",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "长期外派员工每月有多少外派津贴？",
-    "expectChunks": [{ "index": 7, "snippet": "违规行为可通过匿名信箱" }],
+    "expectChunks": [{ "index": 6, "snippet": "有异议的，可在结果公示后 5 个工作日内向人力资" }],
     "answerMustContain": ["2500"]
   },
   {
     "id": "c19",
     "section": "跨章节（年假 × 婚假）",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "一名正式员工在同一年里休完年假与婚假，合计最多可休多少天带薪假期？",
     "expectChunks": [
-      { "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" },
-      { "index": 2, "snippet": "有带薪年假 17 天" }
+      { "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" },
+      { "index": 2, "snippet": "算加班费，二选一且一经确认不可更改。工作日的加班" }
     ],
     "answerMustContain": ["29"]
   },
   {
     "id": "c20",
     "section": "十一、离职与交接",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "离职时未休年假最多可以折算几天？",
-    "expectChunks": [{ "index": 8, "snippet": "交接须填写《离职交接单》" }],
+    "expectChunks": [{ "index": 7, "snippet": "面形式通知公司，试用期内提前 3 天即可。公司收" }],
     "answerMustContain": ["10"]
   },
   {
     "id": "c21",
     "section": "改述·二、休假制度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "刚入职不到半年，年假能休几天？",
-    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "expectChunks": [{ "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" }],
     "answerMustContain": ["折算"]
   },
   {
     "id": "c22",
     "section": "改述·四、费用报销",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "出差住酒店的费用怎么报？",
-    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "expectChunks": [{ "index": 3, "snippet": "附书单，且与本人岗位相关）" }],
     "answerMustContain": null,
     "answerAnyOf": [["分级", "定额", "档次", "级别"]]
   },
   {
     "id": "c23",
     "section": "改述·五、设备与信息安全",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "在公司工作三年了，笔记本能申请换新的吗？",
-    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "expectChunks": [{ "index": 3, "snippet": "附书单，且与本人岗位相关）" }],
     "answerMustContain": ["折旧"]
   },
   {
     "id": "c24",
     "section": "改述·一、入职与考勤",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "远程办公的日子里，多久不回企业消息会被算成事假？",
-    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "expectChunks": [{ "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" }],
     "answerMustContain": ["30 分钟"]
   },
   {
     "id": "c25",
     "section": "改述·三、年度额度",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "公司给员工健身补贴吗，多少钱？",
-    "expectChunks": [{ "index": 3, "snippet": "假按当地法规执行" }],
+    "expectChunks": [{ "index": 2, "snippet": "算加班费，二选一且一经确认不可更改。工作日的加班" }],
     "answerMustContain": ["1200"]
   },
 {
     "id": "v01",
     "section": "版本冲突 · 病假",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "病假超过 10 天的部分按什么标准发放工资？",
-    "expectChunks": [{ "index": 2, "snippet": "有带薪年假 17 天" }],
+    "expectChunks": [{ "index": 1, "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以" }],
     "confuserChunks": [
       {
         "documentTitle": "E-星海科技员工手册(2024版).md",
@@ -223,9 +224,9 @@
   {
     "id": "v02",
     "section": "版本冲突 · 考勤",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "一个自然月内累计迟到几次会取消当季度绩效奖金参评资格？",
-    "expectChunks": [{ "index": 1, "snippet": "出勤，超过 9:40 但在 10:30 之前到岗的" }],
+    "expectChunks": [{ "index": 0, "snippet": "# 星海科技员工手册（2026 版）" }],
     "confuserChunks": [
       {
         "documentTitle": "E-星海科技员工手册(2024版).md",
@@ -239,9 +240,9 @@
   {
     "id": "v03",
     "section": "版本冲突 · 离职",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "员工提出辞职应提前多久以书面形式通知公司？",
-    "expectChunks": [{ "index": 7, "snippet": "违规行为可通过匿名信箱" }],
+    "expectChunks": [{ "index": 6, "snippet": "有异议的，可在结果公示后 5 个工作日内向人力资" }],
     "confuserChunks": [
       {
         "documentTitle": "E-星海科技员工手册(2024版).md",
@@ -255,9 +256,9 @@
   {
     "id": "v04",
     "section": "版本冲突 · 离职",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "未休年假折算工资是按日均工资的几倍计算？",
-    "expectChunks": [{ "index": 8, "snippet": "交接须填写《离职交接单》" }],
+    "expectChunks": [{ "index": 7, "snippet": "面形式通知公司，试用期内提前 3 天即可。公司收" }],
     "confuserChunks": [
       {
         "documentTitle": "E-星海科技员工手册(2024版).md",
@@ -271,9 +272,9 @@
   {
     "id": "v05",
     "section": "版本冲突 · 报销",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "报销单据应在费用发生后多少个工作日内提交？",
-    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "expectChunks": [{ "index": 3, "snippet": "附书单，且与本人岗位相关）" }],
     "confuserChunks": [
       {
         "documentTitle": "E-星海科技员工手册(2024版).md",
@@ -287,9 +288,9 @@
   {
     "id": "v06",
     "section": "版本冲突 · 设备",
-    "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+    "documentTitle": "C-星海科技员工手册(2026版).md",
     "question": "公司配发的笔记本电脑折旧周期是几年？",
-    "expectChunks": [{ "index": 4, "snippet": "上限为 380 元" }],
+    "expectChunks": [{ "index": 3, "snippet": "附书单，且与本人岗位相关）" }],
     "confuserChunks": [
       {
         "documentTitle": "E-星海科技员工手册(2024版).md",
@@ -308,9 +309,9 @@
     "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 2,
-        "snippet": "有带薪年假 17 天",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 1,
+        "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以",
         "note": "正式员工的年假条款，措辞几乎相同但主体不同"
       }
     ],
@@ -324,9 +325,9 @@
     "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 5,
-        "snippet": "端管理软件，并开启全盘加密",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 4,
+        "snippet": "一台笔记本电脑，设备的折旧周期为 4 年。折旧期",
         "note": "绩效条款本身，未提试用期"
       }
     ],
@@ -358,9 +359,9 @@
     "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 3,
-        "snippet": "假按当地法规执行",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 2,
+        "snippet": "算加班费，二选一且一经确认不可更改。工作日的加班",
         "note": "培训基金 8000 元的正面条款"
       }
     ],
@@ -374,9 +375,9 @@
     "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由。" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 8,
-        "snippet": "交接须填写《离职交接单》",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 7,
+        "snippet": "面形式通知公司，试用期内提前 3 天即可。公司收",
         "note": "正式员工 30 天"
       }
     ],
@@ -390,7 +391,7 @@
     "expectChunks": [{ "index": 0, "snippet": "# 星海科技（成都）研发中心管理制度" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
         "index": 0,
         "snippet": "# 星海科技员工手册",
         "note": "母公司弹性工作制：9:40"
@@ -406,9 +407,9 @@
     "expectChunks": [{ "index": 2, "snippet": "研发中心负责人审批。" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 7,
-        "snippet": "违规行为可通过匿名信箱",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 6,
+        "snippet": "有异议的，可在结果公示后 5 个工作日内向人力资",
         "note": "母公司：120 元"
       }
     ],
@@ -422,9 +423,9 @@
     "expectChunks": [{ "index": 4, "snippet": "为期 8 周的导师带训期" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 2,
-        "snippet": "有带薪年假 17 天",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 1,
+        "snippet": "3 日前汇总并公示。一个自然月内累计迟到三次及以",
         "note": "母公司：三个月"
       }
     ],
@@ -438,9 +439,9 @@
     "expectChunks": [{ "index": 3, "snippet": "效考核每季度一次" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 5,
-        "snippet": "端管理软件，并开启全盘加密",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 4,
+        "snippet": "一台笔记本电脑，设备的折旧周期为 4 年。折旧期",
         "note": "母公司：10%"
       }
     ],
@@ -454,9 +455,9 @@
     "expectChunks": [{ "index": 4, "snippet": "为期 8 周的导师带训期" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 6,
-        "snippet": "，形式为午餐会",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 5,
+        "snippet": "上年绩效结果挂钩：A 档及以上为 8%，B 档为",
         "note": "母公司：6 周"
       }
     ],
@@ -470,9 +471,9 @@
     "expectChunks": [{ "index": 5, "snippet": "3 个工作日的，须提交医院出具的休假建议书" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 5,
-        "snippet": "端管理软件，并开启全盘加密",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 4,
+        "snippet": "一台笔记本电脑，设备的折旧周期为 4 年。折旧期",
         "note": "母公司：三年"
       }
     ],
@@ -495,9 +496,9 @@
     "expectChunks": [{ "index": 3, "snippet": "效考核每季度一次" }],
     "confuserChunks": [
       {
-        "documentTitle": "C-星海科技员工手册-完整版(B1专用).md",
-        "index": 5,
-        "snippet": "端管理软件，并开启全盘加密",
+        "documentTitle": "C-星海科技员工手册(2026版).md",
+        "index": 4,
+        "snippet": "一台笔记本电脑，设备的折旧周期为 4 年。折旧期",
         "note": "母公司：4 月"
       }
     ],
@@ -511,7 +512,7 @@
       "expectChunks": [{ "index": 1, "snippet": "格的，公司可依法解除劳动合同，并说明理由" }],
       "evidence": [
         { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 1 },
-        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 2 }
+        { "documentTitle": "C-星海科技员工手册(2026版).md", "index": 1 }
       ],
       "answerMustContain": null,
       "answerAnyOf": [["不计入", "不算", "不包括", "排除在", "不计算在内"]]
@@ -523,10 +524,10 @@
       "minHops": 2,
       "documentTitle": "F-星海科技成都研发中心管理制度.md",
       "question": "在成都研发中心上班，结婚可以休多少天婚假？",
-      "expectChunks": [{ "index": 5, "snippet": "婚假、丧假、产假按国家规定与母公司标准执行" }],
+      "expectChunks": [{ "index": 5, "snippet": "3 个工作日的，须提交医院出具的休假建议书。全年" }],
       "evidence": [
         { "documentTitle": "F-星海科技成都研发中心管理制度.md", "index": 5 },
-        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 2 }
+        { "documentTitle": "C-星海科技员工手册(2026版).md", "index": 2 }
       ],
       "answerMustContain": ["12"],
       "answerAnyOf": null
@@ -541,7 +542,7 @@
       "expectChunks": [{ "index": 3, "snippet": "效考核每季度一次，结果分为 S、A、B、C 四档" }],
       "evidence": [
         { "documentTitle": "F-星海科技成都研发中心管理制度.md", "index": 3 },
-        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 5 }
+        { "documentTitle": "C-星海科技员工手册(2026版).md", "index": 4 }
       ],
       "answerMustContain": ["15"],
       "answerAnyOf": [["高", "更宽", "高于", "多出"]]
@@ -554,7 +555,7 @@
       "expectChunks": [{ "index": 1, "snippet": "5 日前汇总并公示" }],
       "evidence": [
         { "documentTitle": "E-星海科技员工手册(2024版).md", "index": 1 },
-        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 8 }
+        { "documentTitle": "C-星海科技员工手册(2026版).md", "index": 7 }
       ],
       "answerMustContain": ["12"],
       "answerAnyOf": [["废止", "失效", "不再适用", "无效", "已被", "不能"]]
@@ -564,7 +565,7 @@
       "section": "多跳·术语桥接（外包人员 × 秘密级定义）",
       "documentTitle": "I-星海科技实习与试用期管理办法.md",
       "question": "外包人员可以接触客户的合同条款吗？",
-      "expectChunks": [{ "index": 3, "snippet": "外包人员不属于公司员工" }],
+      "expectChunks": [{ "index": 3, "snippet": "。\n\n外包人员不属于公司员工，仅按合同约定提供服" }],
       "evidence": [
         { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 3 },
         { "documentTitle": "H-星海科技信息安全与数据合规管理办法.md", "index": 0 }
@@ -596,7 +597,7 @@
       "evidence": [
         { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 2 },
         { "documentTitle": "I-星海科技实习与试用期管理办法.md", "index": 1 },
-        { "documentTitle": "C-星海科技员工手册-完整版(B1专用).md", "index": 2 }
+        { "documentTitle": "C-星海科技员工手册(2026版).md", "index": 1 }
       ],
       "answerMustContain": ["折算"],
       "answerAnyOf": [["没有", "不享受", "无", "不适用", "不能享受"]]
