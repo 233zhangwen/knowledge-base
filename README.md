@@ -55,7 +55,7 @@ flowchart LR
     end
 
     subgraph "存储"
-        PG[("PostgreSQL / Neon<br/>pgvector 1024 维<br/>文档·切片·向量·会话·消息·引用快照")]
+        PG[("PostgreSQL / Neon<br/>pgvector 1024 维<br/>组织·成员·文档·切片·向量·会话·消息·引用快照")]
         Blob[("对象存储驱动<br/>Blob / DB / 磁盘")]
     end
 
@@ -89,6 +89,35 @@ flowchart LR
 | 采样 | temperature = 0 + thinking disabled（线上与评测同源） | `src/lib/agent-prompt.json` |
 
 流协议：`{"v":2,...}` 头行 → 事件行（tool 状态 / citations）→ **文本起始哨兵 `\u0001`** → 纯文本增量；错误走 `\u0000` 哨兵。边界全部显式声明（ADR-9），定义与解析器同居 `chat-protocol.ts` 成对变化。
+
+### 租户边界（W19）
+
+数据边界是**组织**，不是用户：
+
+```
+User ──Membership(role)──> Organization ──owns──> KnowledgeBase ──> Document ──> Chunk
+                                        └─owns──> Conversation ──> Message
+```
+
+| 字段 | 语义 | 用在哪 |
+|---|---|---|
+| `orgId` | **能不能访问** | 每一处 `where` 条件 |
+| `createdBy` | **谁建的**（审计，无外键） | `/admin`、未来"仅创建者可删" |
+
+三个刻意的选择，都有代价：
+
+- **不上 Prisma extension 自动注入 `orgId`**（ADR-10）：向量检索必须走 `$queryRaw`，extension 管不到它 —— 于是 98% 的查询有自动保护、2% 没有，而那 2% 正好是核心检索链路。**有盲区的防护比没有防护更危险**，因为它会让人停止逐处 review。
+- **`Conversation.orgId` 冗余一份**（`kbId` 已隐含组织）：换来"不用 join 就能过滤"。代价是换组织时要同时改两处 —— 本项目没有"转移知识库"功能。
+- **`orgId` 不从 JWT 读，每次查 `Membership`**：jwt 策略下没法主动吊销会话，把 orgId 写进 token 等于把撤权交给时间。代价是每个请求多一次索引查询（几毫秒）。
+
+边界靠三道闸门守住，缺一不可：
+
+```bash
+RUN_DB_TESTS=1 npm run test:db   # 27 条：跨组织 12 打不进 / 自有 6 条通着 / 同组织 7 条可见 / 反证 2 条
+npm run check:scope              # 静态扫 src/ 全部 prisma 查询，列出没带 orgId 的（白名单要写理由）
+npx tsc --noEmit                 # 字段改名后编译器替你找残留
+```
+
 
 ## 测试
 
@@ -325,6 +354,13 @@ BLOB_READ_WRITE_TOKEN 有 → Vercel Blob
 ### 9. 流协议的数据边界必须显式声明（哨兵，不靠试探）
 Agent 化后引用从"流前快照"变成"流中产物"，协议升到 v2。第一版用"逐行找 `\n` + `JSON.parse` 失败就当文本"来区分事件行和答案——**第一天就穿帮**：闲聊不触发工具时服务端直接发文本，没有换行的答案整段被当成"没收全的事件行"扣在缓冲区，前端空白到刷新才显示。修法：文本开始前服务端必发哨兵 `\u0001`（错误哨兵 `\u0000` 同套路），客户端只认哨兵不猜。教训：*协议里"哪里是数据边界"是结构问题，试探是把正确性赌在数据形状上——和"判据要有独立参照点"是同一类错误。* 编码器与解析器同居一个文件、23 条边界用例（含本 bug 的回归用例）随仓库。
 
+### 10. 多租户不用 Prisma extension 自动注入租户条件
+主流做法是给 Prisma 挂 extension，自动往每个 `where` 里塞 `orgId`。**这里有硬性理由不能这么做**：向量检索必须走 `$queryRaw`（Prisma 不支持 `vector` 类型的表达式查询，见 ADR 之外的 `retrieve.ts` 两段式 SQL），**extension 管不到 raw query**。结果是 98% 的查询被自动保护、2% 没有，而那 2% 恰好是最核心的检索链路。
+
+更糟的是它制造一种"租户隔离已经做了"的错觉，让 review 时没人再逐处看 `where`。**有盲区的防护比没有防护更危险。** 这和 W16 那条教训同类：评测脚本手抄了一份检索 SQL，测的是线上不存在的系统——*"看起来受保护"和"真的受保护"之间的差距只有审计能发现，而错觉会让人停止审计。*
+
+所以走显式路线：`requireTenant()` 单一入口 + 每处 `where` 带 `orgId` + 越权测试兜底 + `npm run check:scope` 静态扫。58 处靠人审，就必须有网，不能靠"我改的时候很小心"。
+
 ## 踩坑实录（部署侧精选）
 
 完整档案（F1~F8）在 [`docs/DEPLOY.md`](docs/DEPLOY.md)，这里挑三条跨平台通用的：
@@ -343,6 +379,7 @@ Agent 化后引用从"流前快照"变成"流中产物"，协议升到 v2。第�
 - **越界引用只在落库前裁剪，流式过程中仍可能闪现**：流是逐字推的，`[9` 和 `9]` 可能分属两个 delta，服务端没有"整句"可裁。刷新后消失，`log.warn('agent.citation.out_of_range')` 有记录。
 - **提示注入防护依赖模型配合的那一半不可靠**：围栏是文本约定不是类型系统，换弱模型或调高 temperature 强度会下降。所以代码层那两道（清洗、编号白名单）刻意做成不依赖模型行为。
 - **对抗集是回归网，不是安全认证**：15 条 × 单次样本，结论只看"有没有观察到越界"，不看小数点。样本量与噪声问题写在 `eval/INJECTION-RESULTS.md` 第五节。
+- **一个用户的数据只落在「最早加入的组织」（W19）**：`requireTenant()` 取 `Membership` 里 `createdAt` 最小的那条，没有组织切换 UI。好处是单人用户完全无感；代价是**加入第二个组织后，所有操作静默地留在第一个组织里**——不报错、不提示。W20 做邀请时必须同时做活动组织选择（cookie），否则这是下一个"静默失败"。
 
 ## 项目结构
 
@@ -374,12 +411,16 @@ src/
     ├── rag-prompt.json        # 旧路径 prompt（评测对照）
     ├── chat-protocol.ts       # 流协议 v1/v2 定义 + 解析器（成对变化，23 条边界用例）
     ├── history.ts             # 会话/消息装载，数据边界校验
+    ├── session.ts             # requireUserId / requireTenant（租户唯一入口）
+    ├── organization.ts        # ensureOrganization：登录即确保有组织（幂等）
     └── storage.ts             # 三驱动对象存储（ADR-7）
 eval/                          # cases.json 52 条（带内容指纹）+ 四轮评测记录
 scripts/eval-agent.mts         # Agent 路径评测（import 生产代码，不手抄检索）
 scripts/eval-rerank.mts        # 检索层四档对照（V5 / R10 / R20 / R50）
 scripts/realign-cases.mts      # 文档重切片后按内容重锚标注
 scripts/check-case-annotations.mts  # 语义自检：期望块里到底有没有答案
+scripts/check-tenant-scope.mts # 静态审计：扫出没带 orgId 的 prisma 查询（白名单要写理由）
+tests/db/tenant-isolation.test.ts   # 越权测试 27 条：挡得住 + 该通的通着 + 反证
 scripts/eval.mjs               # 旧路径评测（对照）
 scripts/probe-tools.mjs        # tool-calling 探针（换模型时重跑）
 docs/                          # 各周验收 spec + 部署手册 + 项目说明
@@ -404,3 +445,13 @@ docs/                          # 各周验收 spec + 部署手册 + 项目说明
 - [x] W9 Agent 可行性探针 + AI SDK spike + 选型
 - [x] W10 Agent 化主链路（工具检索 / 协议 v2 / 评测零退化）
 - [x] W11 收尾：旧端点退役、检索状态提示、文档对齐
+- [x] W12 交互与历史：会话侧栏、引用展开、错误页
+- [x] W13 可观测 + CI 分级（日志 / 成本 / health / 三档门禁）
+- [x] W14 提示注入对抗：围栏 + 清洗 + 编号白名单（15 条对抗集）
+- [x] W15 检索精排：扩库到 40 块 + cross-encoder，四档对照后定 RECALL_K=10
+- [x] W16 多跳与上下文压缩：**发现评测脚本手抄检索 SQL（测的是线上不存在的系统）**
+- [x] W17 文档元数据：生效日期 / 废止关系注入围栏头，token 7535 → 4641
+- [x] W18 基线重建：语料收回仓库、重锚脚本、51/52（v04 因切片抽签失败，如实保留）
+- [x] W19 多租户底座：Organization / Membership、边界从 user 抬到 org、越权测试 27 条
+- [ ] W20 邀请与角色（一次性 token + 活动组织切换）
+- [ ] W21 配额与用量（按月问答次数，原子扣减）
