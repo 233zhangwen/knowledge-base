@@ -18,6 +18,8 @@ import { jsonSchema, stepCountIs, streamText, tool } from 'ai';
 
 import type { Citation } from './chat-protocol';
 import PROMPT from './agent-prompt.json';
+import { pointerHintText, pointerHints, seenPlaceholder } from './context-budget';
+import { log } from './log';
 import { retrieve, type RetrievedChunk } from './retrieve';
 import { fenceChunk } from './untrusted';
 
@@ -26,6 +28,21 @@ import { fenceChunk } from './untrusted';
  * 一轮"检索→作答"是 2 步；留 6 步给"查 A→查 B→作答"的多跳，再多就该拦了。
  */
 export const AGENT_MAX_STEPS = 6;
+
+/**
+ * 单轮对话里检索工具的执行上限（W16 成本控制）。
+ *
+ * 实测：加了指路提示之后，模型会一路查下去 —— 有的题查到 5 次、23k input token，
+ * 而正确答案在第 2 次检索时就已经拿到了（多出来的搜索只是在为同一条答案排队）。
+ * 步数上限（AGENT_MAX_STEPS=6）管不住这个，因为它同时要留给生成步骤。
+ *
+ * 3 次的依据：多跳题的实际需要是「首查 → 追指针 → 核版本」，正好 3 步；
+ * 单跳题 1~2 步。超过 3 次的都是同一查询的重复劳动（重复率实测 26%）。
+ *
+ * 超限**不抛错**，而是回一句提示让模型基于已有资料作答 —— 与 retrieve 的降级同一条纪律：
+ * 外部约束不该把整轮问答变成错误页。
+ */
+export const AGENT_MAX_RETRIEVALS = 3;
 
 /** Agent 循环吐给调用方（route.ts）的事件。协议 v2 的服务端半边。 */
 export type AgentEvent =
@@ -104,20 +121,38 @@ type CitationLedger = {
 };
 
 function formatChunks(chunks: RetrievedChunk[], ledger: CitationLedger): string {
-  return chunks
+  let repeated = 0;
+  const body = chunks
     .map((c) => {
-      let no = ledger.numbers.get(c.id);
-      if (no === undefined) {
-        no = ledger.numbers.size + 1;
-        ledger.numbers.set(c.id, no);
-        ledger.citations.push({
-          chunkIndex: c.chunkIndex,
-          documentId: c.documentId,
+      /**
+       * W16：**已见块不再重复注入正文**。
+       *
+       * 原来这里只做编号复用，正文照旧完整拼一遍 —— 多跳场景下（W16 平均 3.33 次检索）
+       * 同一段 500 字会在上下文里出现两三次，模型读几遍、token 付几遍，
+       * 而信息量一点没加。
+       *
+       * 编号仍是复用的（引用不乱），只是正文换成指针。这是无损的：
+       * 没删任何信息，只是不再重复同一份。
+       */
+      const prevNo = ledger.numbers.get(c.id);
+      if (prevNo !== undefined) {
+        repeated += 1;
+        return seenPlaceholder({
+          no: prevNo,
           documentTitle: c.documentTitle,
-          similarity: c.similarity,
-          content: c.content,
+          chunkIndex: c.chunkIndex,
         });
       }
+
+      const no = ledger.numbers.size + 1;
+      ledger.numbers.set(c.id, no);
+      ledger.citations.push({
+        chunkIndex: c.chunkIndex,
+        documentId: c.documentId,
+        documentTitle: c.documentTitle,
+        similarity: c.similarity,
+        content: c.content,
+      });
       /**
        * W14：从「裸拼 [n] + 原文」改成「围栏包起来」。
        *
@@ -137,9 +172,38 @@ function formatChunks(chunks: RetrievedChunk[], ledger: CitationLedger): string 
       });
     })
     .join('\n\n');
+
+  /**
+   * 确定性指标（W16）：这一轮检索拿回来 5 块，其中几块是之前已经给过的。
+   *
+   * 为什么必须记这个而不是看 token：模型的多跳次数本身在波动（同一问题实测 4~5 次），
+   * token 总量被次数淹没，去重的效果在里面看不出来。重复块数是**与调用次数无关**的比率，
+   * 才是能归因的量。
+   */
+  log.info('agent.chunks', { total: chunks.length, fresh: chunks.length - repeated, repeated });
+
+  /**
+   * 指路提示（W16 B 组）：只在检测到「按《X》执行」时才加一行。
+   *
+   * 这一行在**围栏之外**，是系统口吻，不是资料内容 —— 与 W14 的围栏纪律一致：
+   * 围栏内一律视为原文，围栏外才是给模型的指令。
+   */
+  /**
+   * 只在**最相关的那一块**里找指路句。
+   *
+   * 全量扫的实测误报率是 100%：问"年假多少天"，top5 里混进研发中心的婚假条款
+   * （「按母公司标准执行」），于是每条题都被提示去查母公司手册 —— 那些检索与问题无关，
+   * 纯粹是 token 开销。
+   *
+   * 收窄到 top-1 的逻辑是：**排第一的块如果指向别处，说明答案确实在别处**；
+   * 排第五的块顺带提到另一份文件，多半只是同章节的邻居。
+   */
+  const names = pointerHints(chunks.slice(0, 1));
+  if (names.length) log.info('agent.pointer', { names });
+  return names.length ? `${body}\n\n${pointerHintText(names)}` : body;
 }
 
-function makeRetrieveTool(kbId: string, ledger: CitationLedger) {
+function makeRetrieveTool(kbId: string, ledger: CitationLedger, budget: { used: number }) {
   return tool({
     description:
       '从用户上传的文档知识库中检索与问题相关的原文片段。凡是可能和文档内容有关的问题（制度、流程、数字、条款），都必须先调用本工具，不要凭记忆回答。',
@@ -154,7 +218,18 @@ function makeRetrieveTool(kbId: string, ledger: CitationLedger) {
      * kbId 只存在于这个闭包里，模型唯一能提供的是 question ——
      * "工具参数最小化"是 spec D2（kbId 注入反证）的实现前提。
      */
-    execute: async ({ question }: { question: string }) => {      const chunks = await retrieve(kbId, question);
+    execute: async ({ question }: { question: string }) => {
+      budget.used += 1;
+      if (budget.used > AGENT_MAX_RETRIEVALS) {
+        /**
+         * 第 4 次（含）之后的调用直接拦下。**注意这里仍然返回文本而不是抛错** ——
+         * SDK 会把异常当成"工具坏了"回传给模型，模型可能会去解释"检索服务故障"，
+         * 那是误导用户。真实原因是我们主动设了预算。
+         */
+        log.warn('agent.budget_exhausted', { used: budget.used, limit: AGENT_MAX_RETRIEVALS });
+        return PROMPT.budgetExhausted;
+      }
+      const chunks = await retrieve(kbId, question);
       if (!chunks.length) return PROMPT.toolEmptyResult;
       return formatChunks(chunks, ledger);
     },
@@ -176,7 +251,8 @@ export async function* runAgentTurn(params: {
   signal?: AbortSignal;
 }): AsyncGenerator<AgentEvent> {
   const ledger: CitationLedger = { numbers: new Map(), citations: [] };
-  const retrieveTool = makeRetrieveTool(params.kbId, ledger);
+  const budget = { used: 0 };
+  const retrieveTool = makeRetrieveTool(params.kbId, ledger, budget);
   let citationCursor = 0; // tool-result 事件对账：本次 execute 新增了哪些引用
   let stepCount = 0;
 
