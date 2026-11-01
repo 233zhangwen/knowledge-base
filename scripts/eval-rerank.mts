@@ -251,6 +251,18 @@ async function docIdOf(title: string): Promise<string> {
 }
 
 // ---------- 粗排 ----------
+/**
+ * 与 `retrieve.ts` 里那段 SQL 是两份**有意**分开的实现，不是漏同步。
+ *
+ * 为什么不能直接 import retrieve：这个脚本的核心是「同一份候选集，不同 limit / 不同精排」
+ * 的四档对照。它必须能把 limit 当成参数传进去，而 retrieve() 内部 limit 固定为 RECALL_K。
+ * 用一个可配置的 retrieve 去满足评测需求，等于为了测试改生产接口。
+ *
+ * 边界很明确：**这份 SQL 只服务于「排序质量」评测**，不参与元数据、围栏、suspicious
+ * 这些和排序无关的验证 —— 那些一律走 eval-agent.mts（它 import 真 retrieve）。
+ * W15 记过一次教训：抄 SQL 抄出过"评测一个线上不存在的系统"，所以这里划清职责，
+ * 而不是继续假装两份 SQL 能靠注释保持一致。
+ */
 async function search(vectorLiteral: string, limit: number): Promise<Hit[]> {
   const { rows } = await client.query(
     `select c.id, c.content, c."chunkIndex", d.id as "documentId", d.title as "documentTitle",

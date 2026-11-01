@@ -74,6 +74,23 @@ const ONLY = (() => {
   return a ? new Set(a.slice('--only='.length).split(',').map((s) => s.trim())) : null;
 })();
 
+/**
+ * W17 的对照实验开关。
+ *
+ * 注意默认值的方向：**元数据默认开、指路提示默认关**（W17 的四组对照把提示关掉了，
+ * 数据见 eval/meta-results.md）。所以默认跑的这一组就是「A1：有元数据 / 无提示」。
+ *
+ *   （无参数）         A1  有元数据 / 无提示   ← 线上行为
+ *   --no-meta         A0  无元数据 / 无提示
+ *   --hint            A3  有元数据 / 有提示
+ *   --no-meta --hint  A2  无元数据 / 有提示
+ */
+const NO_META = args.includes('--no-meta');
+const HINT = args.includes('--hint');
+if (NO_META) process.env.AGENT_DOC_META = 'off';
+if (HINT) process.env.AGENT_POINTER_HINT = 'on';
+const ARM = `${NO_META ? '无元数据' : '有元数据'} / ${HINT ? '有提示' : '无提示'}`;
+
 // ---------- 用例类型 ----------
 type Evidence = { documentTitle: string; index: number };
 
@@ -334,7 +351,7 @@ const pct = (a: number[], p: number) => {
 };
 const n = cases.length;
 
-console.log('\n===== 汇总（顶部为 W16 起点基线，以后每轮都拿它对比） =====');
+console.log(`\n===== 汇总（${ARM}） =====`);
 console.log(
   `答案层 ${overall.answerOk}/${overall.answerTotal}  平均检索 ${(overall.retrievals / n).toFixed(2)} 次/问  ` +
     `平均证据覆盖 ${(avg(overall.evidenceRecall) * 100).toFixed(1)}%`,
