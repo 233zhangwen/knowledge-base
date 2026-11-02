@@ -1,4 +1,7 @@
-import { prisma } from '@/lib/prisma';
+// lib 内统一用相对导入（其余 5 处同款），不再用 @/ 别名：
+// 这样 node 直跑的脚本/测试（--experimental-transform-types）也能加载本模块，
+// ESM 解析钩子只补相对路径的后缀，不解析 tsconfig 的 paths。
+import { prisma } from './prisma';
 
 /**
  * 保证用户有一个组织，返回它的 id（W19）。
