@@ -97,9 +97,41 @@ model Organization {
   memberships    Membership[]
   knowledgeBases KnowledgeBase[]
   conversations  Conversation[]
+  invites        Invite[]
 
   // W21 会在这里挂 usageRecords（按月问答次数）。
   // 现在不建表：配额还没有任何逻辑，建一张空表只会让人以为已经做了。
+}
+
+/**
+ * 邀请（W20）：owner 生成一次性 token，持链接的登录用户消费后加入组织。
+ *
+ * 三个安全设计，缺一个都会出事：
+ *   1. **只存 hash**：明文 token 只在生成那一刻返回给前端，库里是 sha256。
+ *      DB 泄露时攻击者手里是一堆 hash，拼不出可以点开的链接。
+ *   2. **一次性靠条件式原子消费**（见 src/lib/invite.ts 的 updateMany），
+ *      不靠"先查 consumedAt 再 update"——双击按钮的两次并发请求都能通过先查。
+ *   3. **role 在生成时写死在库里**，链接里只有 token：
+ *      不存在"改链接参数给自己发 owner"这种攻击面。
+ *
+ * consumedBy / createdBy 故意不设外键（与 KnowledgeBase.createdBy 同理：纯审计字段，
+ * 用户被删后审计记录不该跟着消失）。
+ */
+model Invite {
+  id String @id @default(cuid())
+  orgId String
+  role  String @default("member")
+  tokenHash String @unique
+  createdBy String
+  expiresAt DateTime
+  consumedAt DateTime?
+  consumedBy String?
+  createdAt DateTime @default(now())
+
+  org Organization @relation(fields: [orgId], references: [id], onDelete: Cascade)
+
+  // 列出"这个组织有哪些有效邀请"时用。
+  @@index([orgId])
 }
 
 /// 用户 × 组织。role 先只有 owner（W19 只做底座，W20 加 member 与权限矩阵）。
