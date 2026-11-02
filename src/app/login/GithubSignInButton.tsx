@@ -18,7 +18,7 @@ import { useState } from 'react';
  *
  *   顺带的好处：这样还能给 loading 态，避免用户重复点击。
  */
-export function GithubSignInButton() {
+export function GithubSignInButton({ callbackUrl = '/kb' }: { callbackUrl?: string }) {
   const [pending, setPending] = useState(false);
 
   return (
@@ -28,7 +28,7 @@ export function GithubSignInButton() {
       onClick={() => {
         setPending(true);
         // callbackUrl：登录成功后跳回哪里。Auth.js 会校验它是不是同源地址。
-        void signIn('github', { callbackUrl: '/kb' });
+        void signIn('github', { callbackUrl });
       }}
       className="rounded-md bg-zinc-900 px-6 py-3 text-sm font-medium text-white transition-colors hover:bg-zinc-700 disabled:cursor-not-allowed disabled:opacity-60"
     >

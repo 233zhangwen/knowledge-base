@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache';
 
 import { prisma } from '@/lib/prisma';
+import { can } from '@/lib/permissions';
 import { requireTenant } from '@/lib/session';
 import { removeQuietly } from '@/lib/storage';
 
@@ -73,7 +74,7 @@ export async function renameKnowledgeBase(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { orgId } = await requireTenant();
+  const { userId, orgId, role } = await requireTenant();
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
@@ -83,6 +84,24 @@ export async function renameKnowledgeBase(
   const validated = validateName(formData.get('name'));
   if ('error' in validated) {
     return { error: validated.error };
+  }
+
+  /**
+   * 动作级权限检查（W20）：member 只能改自己创建的库。
+   *
+   * 注意这次检查**不在 where 里**：行级检查（orgId，防"看到别人的"）和
+   * 动作级检查（can()，防"member 动别人的"）是两层，混在 where 里需要 join
+   * Membership，可读性差。先 can 后查，各自语义清楚。
+   *
+   * 顺序：必须在 updateMany 之前查一次 createdBy ——
+   * 不能先改了再发现没权限。多一次查询换检查位置的正确性，值得。
+   */
+  const kb = await prisma.knowledgeBase.findFirst({
+    where: { id, orgId },
+    select: { createdBy: true },
+  });
+  if (!kb || !can({ userId, role }, 'kb:rename', kb)) {
+    return { error: '知识库不存在或无权修改' };
   }
 
   /**
@@ -126,11 +145,23 @@ export async function deleteKnowledgeBase(
   _prev: ActionState,
   formData: FormData,
 ): Promise<ActionState> {
-  const { orgId } = await requireTenant();
+  const { userId, orgId, role } = await requireTenant();
 
   const id = String(formData.get('id') ?? '');
   if (!id) {
     return { error: '缺少知识库 id' };
+  }
+
+  /**
+   * 动作级权限检查（W20）：member 只能删自己创建的库，理由同 renameKnowledgeBase。
+   * 提示语维持"不存在或无权删除"，不区分这两种情况 —— 防 id 枚举。
+   */
+  const kb = await prisma.knowledgeBase.findFirst({
+    where: { id, orgId },
+    select: { createdBy: true },
+  });
+  if (!kb || !can({ userId, role }, 'kb:delete', kb)) {
+    return { error: '知识库不存在或无权删除' };
   }
 
   /**

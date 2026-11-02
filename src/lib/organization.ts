@@ -48,3 +48,46 @@ export async function ensureOrganization(user: {
 
   return org.id;
 }
+
+/**
+ * 解析用户的"活动组织"（W20）。
+ *
+ * 为什么 cookie 里的 orgId 不能直接信：cookie 是客户端可改的。
+ * 把别人的 orgId 写进自己的 cookie，如果直接拿来查业务表，就是一次完整的跨租户访问。
+ * 所以这里必须拿它去查**自己的** membership —— 查不到就当没提供过，走 fallback。
+ * 这一步查库就是防伪造的全部，一次几毫秒，和 requireTenant 查角色的代价是同一次。
+ *
+ * 为什么独立成函数、requireTenant 不直接写：这个函数只依赖 userId 和 cookie 值，
+ * 不碰 session / cookies()，DB 测试可以直打它（伪造 cookie 的场景不用起 HTTP 服务）。
+ *
+ * 没有任何 membership 时抛 NO_ORGANIZATION，由调用方决定兜底
+ * （requireTenant 里是 ensureOrganization，测试里直接断言异常）。
+ */
+export async function resolveActiveOrg(
+  userId: string,
+  cookieOrgId: string | undefined,
+): Promise<{ orgId: string; role: string }> {
+  if (cookieOrgId) {
+    const active = await prisma.membership.findUnique({
+      where: { userId_orgId: { userId, orgId: cookieOrgId } },
+      select: { orgId: true, role: true },
+    });
+    if (active) {
+      return active;
+    }
+  }
+
+  // 无 cookie / cookie 指向非成员组织 → fallback 最早加入的组织（W19 的原行为）。
+  // 这是合理的静默：用户被移出组织后 cookie 失效，落回自己的组织，而不是报错卡死。
+  const fallback = await prisma.membership.findFirst({
+    where: { userId },
+    orderBy: { createdAt: 'asc' },
+    select: { orgId: true, role: true },
+  });
+
+  if (!fallback) {
+    throw new Error('NO_ORGANIZATION');
+  }
+
+  return fallback;
+}

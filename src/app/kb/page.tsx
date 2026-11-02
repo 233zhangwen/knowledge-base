@@ -6,6 +6,7 @@ import { requireTenant } from '@/lib/session';
 
 import { CreateKbForm } from './CreateKbForm';
 import { KbCard } from './KbCard';
+import { OrgSwitcher } from './OrgSwitcher';
 
 export default async function KnowledgeBasePage() {
   const session = await auth();
@@ -52,7 +53,10 @@ export default async function KnowledgeBasePage() {
           </p>
         </div>
 
-        <form
+        <div className="flex items-center gap-3">
+          <OrgSwitcher />
+
+          <form
           action={async () => {
             'use server';
             await signOut({ redirectTo: '/login' });
@@ -65,6 +69,7 @@ export default async function KnowledgeBasePage() {
             退出登录
           </button>
         </form>
+        </div>
       </header>
 
       <section className="flex flex-col gap-4">

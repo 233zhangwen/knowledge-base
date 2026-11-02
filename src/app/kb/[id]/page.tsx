@@ -10,6 +10,7 @@ import { requireTenant } from '@/lib/session';
 import { ChatPanel, type UiMessage } from './ChatPanel';
 import { ConversationSidebar, type SidebarItem } from './ConversationSidebar';
 import { DeleteDocumentButton } from './DeleteDocumentButton';
+import { OrgSwitcher } from '../OrgSwitcher';
 import { ReindexButton } from './ReindexButton';
 import { UploadForm } from './UploadForm';
 
@@ -124,9 +125,12 @@ export default async function KnowledgeBaseDetailPage({
      */
     <main className="mx-auto flex min-h-screen w-full max-w-5xl flex-col gap-6 p-4 sm:p-8">
       <header className="flex flex-col gap-2 border-b pb-4">
-        <Link href="/kb" className="text-sm text-zinc-500 hover:text-zinc-900">
-          ← 返回知识库列表
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/kb" className="text-sm text-zinc-500 hover:text-zinc-900">
+            ← 返回知识库列表
+          </Link>
+          <OrgSwitcher />
+        </div>
         <h1 className="text-xl font-semibold">{kb.name}</h1>
         {kb.description ? (
           <p className="text-sm text-zinc-500">{kb.description}</p>
