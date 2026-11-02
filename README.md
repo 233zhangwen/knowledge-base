@@ -127,7 +127,7 @@ npx tsc --noEmit                 # 字段改名后编译器替你找残留
 npm run test:unit                # 纯函数单测（vitest，不连库，<10s）
 RUN_DB_TESTS=1 npm run test:db   # DB 集成测试（打真实 Neon，默认 skip）
 npm run e2e:auth                 # 一次性：弹出浏览器手工登录 GitHub，保存 E2E 登录态
-npm run test:e2e                 # Playwright：建库→上传→提问→引用 / 闲聊不检索 / 会话删除
+npm run test:e2e                 # Playwright：建库→上传→提问→引用 / 闲聊不检索 / 会话删除 / W20 邀请与设置页
 node scripts/verify-stream-protocol.mts   # 零依赖协议验尸（装不上依赖时也能跑）
 ```
 
