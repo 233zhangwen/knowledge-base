@@ -113,10 +113,25 @@ User ──Membership(role)──> Organization ──owns──> KnowledgeBase 
 边界靠三道闸门守住，缺一不可：
 
 ```bash
-RUN_DB_TESTS=1 npm run test:db   # W19 越权 27 条 + W20 邀请/角色 20 条（一次性 token、并发消费、cookie 伪造 fallback）
+RUN_DB_TESTS=1 npm run test:db   # W19 越权 27 + W20 邀请/角色 20 + W21 配额并发 5（共 61 条）
 npm run check:scope              # 静态扫 src/ 全部 prisma 查询，列出没带 orgId 的（白名单要写理由）
 npx tsc --noEmit                 # 字段改名后编译器替你找残留
 ```
+
+### 配额：为什么没有 `usedCount` 字段
+
+`Organization` 上只有一个 `monthlyAnswerQuota Int?`（null = 用 `MONTHLY_ANSWER_QUOTA`，默认 500），**没有用量字段**。已用量每次从事实现算：
+
+```sql
+count(Message where conversation.orgId = $1 and role = 'user' and createdAt >= 月初)
+```
+
+两个理由，都写进了 `docs/ACCEPTANCE-W21.md`：
+
+1. **计数器必然漂移**。任何维护累计值的系统都要回答：失败算不算？中断算不算？迁移/修数之后对不对？答案迟早是"对不上"，然后你需要重算脚本 —— 而重算的依据就是这里的事实本身。现算等于永远在对账，代价只是每次提问多一次聚合查询。
+2. **`+1` 不是原子的**。两个成员同一毫秒问到最后一题，都读到 `used = limit - 1`，都 +1，超发一个。单机自测永远撞不上。做法是事务里 `SELECT ... FROM "Organization" WHERE id = $1 FOR UPDATE` 锁组织行 → 数 → 插，**检查与占用在同一个事务里**，超发在结构上不可能。锁的粒度 = 配额的语义粒度，跨组织完全不受影响。
+
+口径是**提问即计数**（不是"回答成功才计"）：已用量恒等于本月 user 消息数，永远可对账；每个请求必占名额，天然防刷；而且不需要定义"什么算成功"（complete？stopped 算吗？—— 定义本身就是漏洞）。超限返回 429，user 消息随事务回滚不落库。
 
 
 ## 测试
@@ -127,7 +142,7 @@ npx tsc --noEmit                 # 字段改名后编译器替你找残留
 npm run test:unit                # 纯函数单测（vitest，不连库，<10s）
 RUN_DB_TESTS=1 npm run test:db   # DB 集成测试（打真实 Neon，默认 skip）
 npm run e2e:auth                 # 一次性：弹出浏览器手工登录 GitHub，保存 E2E 登录态
-npm run test:e2e                 # Playwright：建库→上传→提问→引用 / 闲聊不检索 / 会话删除 / W20 邀请与设置页
+npm run test:e2e                 # Playwright：建库→上传→提问→引用 / 闲聊不检索 / 会话删除 / 邀请与设置页 / 配额 429
 node scripts/verify-stream-protocol.mts   # 零依赖协议验尸（装不上依赖时也能跑）
 ```
 
@@ -380,6 +395,7 @@ Agent 化后引用从"流前快照"变成"流中产物"，协议升到 v2。第�
 - **提示注入防护依赖模型配合的那一半不可靠**：围栏是文本约定不是类型系统，换弱模型或调高 temperature 强度会下降。所以代码层那两道（清洗、编号白名单）刻意做成不依赖模型行为。
 - **对抗集是回归网，不是安全认证**：15 条 × 单次样本，结论只看"有没有观察到越界"，不看小数点。样本量与噪声问题写在 `eval/INJECTION-RESULTS.md` 第五节。
 - **活动组织 cookie（`activeOrg`）的失效是静默 fallback**（W20）：被移出组织后旧 cookie 指向已不属于的组织，`resolveActiveOrg` 查不到 membership 就落回最早组织——行为正确但不提示（UI 上当前组织名可见）。与之配套的代价：活动组织存 cookie 而不是 JWT，换设备要重新选一次。
+- **配额的两个已知取舍**（W21）：① **月初是 UTC**，中国用户实际在每月 1 号 08:00 才重置——8 小时边界差异对"月度配额"语义无实质影响，不值得为此引入时区配置；② **改配额没有 UI**，只能改 DB 字段或 `MONTHLY_ANSWER_QUOTA`，等出现第二个真实组织再说。已用量每次现算（不存计数器），数据量大到聚合查询成为瓶颈时再上计数器 + 定期对账，理由见「配额」一节。
 
 ## 项目结构
 
@@ -428,9 +444,9 @@ docs/                          # 各周验收 spec + 部署手册 + 项目说明
 
 ## Out of Scope（显式不做）
 
-在线文档编辑、外部数据源同步（网页/飞书/Notion）、多文档联合推理的显式规划（多跳目前靠模型自发多步检索）、组织改名/删除/转让、邀请发 owner 角色、邮件通知（GitHub 邮箱多为 noreply，发了也到不了）、API key、计费配额（W21 做按月问答次数，金额化不在内）、移动端原生适配、大文件直传（签名 URL 方案）、prompt cache（国内 provider 支持不稳）。
+在线文档编辑、外部数据源同步（网页/飞书/Notion）、多文档联合推理的显式规划（多跳目前靠模型自发多步检索）、组织改名/删除/转让、邀请发 owner 角色、邮件通知（GitHub 邮箱多为 noreply，发了也到不了）、API key、**金额化计费**（配额按次数算，不按钱）、改配额的 UI（DB 手工改 / env 默认）、按用户或按知识库的细分配额、移动端原生适配、大文件直传（签名 URL 方案）、prompt cache（国内 provider 支持不稳）。
 
-（团队协作与共享原在本列，W19–W20 多租户改造后已部分交付：组织 / 成员 / 邀请 / 角色。上表是交付后的新边界。）
+（团队协作与共享原在本列，W19–W20 多租户改造后已部分交付：组织 / 成员 / 邀请 / 角色；计费配额 W21 已交付按月问答次数。上表是交付后的新边界。）
 
 这些不是没想到，是**评估后决定不进 MVP**——每一条展开都会显著增加攻击面或复杂度，而当前的核心命题是把 RAG 主链路和评测方法做扎实。
 
@@ -456,4 +472,4 @@ docs/                          # 各周验收 spec + 部署手册 + 项目说明
 - [x] W18 基线重建：语料收回仓库、重锚脚本、51/52（v04 因切片抽签失败，如实保留）
 - [x] W19 多租户底座：Organization / Membership、边界从 user 抬到 org、越权测试 27 条
 - [x] W20 邀请与角色：一次性 token（hash 落库/原子消费）、owner-member 权限矩阵、活动组织切换
-- [ ] W21 配额与用量（按月问答次数，原子扣减）
+- [x] W21 配额与用量：已用量现算不存计数器、`FOR UPDATE` 锁组织行做原子占用、超限 429
