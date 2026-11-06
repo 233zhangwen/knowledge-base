@@ -17,6 +17,7 @@ import { redirect } from 'next/navigation';
 import { auth } from '@/auth';
 import { prisma } from '@/lib/prisma';
 import { can } from '@/lib/permissions';
+import { getMonthlyUsage } from '@/lib/quota';
 import { requireTenant } from '@/lib/session';
 
 import { CreateInviteForm } from './CreateInviteForm';
@@ -59,6 +60,11 @@ export default async function SettingsPage() {
         })
       : Promise.resolve([]),
   ]);
+
+  // owner 的配额用量（member 不显示：不是他的决策信息，见 W21 spec D4）。
+  // 放在 Promise.all 之后单独取：它依赖 isOwner，而 isOwner 依赖上面的 requireTenant，
+  // 语义上就不和前三个查询并列 —— 强行塞进数组只会多一层条件可读性更差。
+  const usage = isOwner ? await getMonthlyUsage(orgId) : null;
 
   return (
     <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 p-8">
@@ -105,6 +111,16 @@ export default async function SettingsPage() {
 
       {isOwner ? (
         <>
+          {/* ①.5 本月用量（W21） */}
+          {usage ? (
+            <p className="rounded-lg border border-zinc-200 px-4 py-3 text-sm text-zinc-600">
+              本月问答 <span className="font-medium text-zinc-900">{usage.used}</span>
+              {' / '}
+              {usage.limit}
+              <span className="ml-2 text-xs text-zinc-400">UTC 自然月，1 号重置</span>
+            </p>
+          ) : null}
+
           {/* ② 成员 */}
           <section className="flex flex-col gap-3">
             <h2 className="text-sm font-medium text-zinc-500">

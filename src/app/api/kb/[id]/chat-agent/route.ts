@@ -26,7 +26,6 @@ import {
 } from '@/lib/chat-protocol';
 import {
   appendAssistantMessage,
-  appendUserMessage,
   ConversationNotFound,
   loadContext,
   resolveConversation,
@@ -35,6 +34,7 @@ import { runAgentTurn } from '@/lib/agent-llm';
 import { reportError } from '@/lib/error-report';
 import { log, previewText } from '@/lib/log';
 import { prisma } from '@/lib/prisma';
+import { consumeMonthlyQuestion, QuotaExceeded } from '@/lib/quota';
 import { requireTenant } from '@/lib/session';
 import { sanitizeAnswer, stripInvisible } from '@/lib/untrusted';
 
@@ -104,8 +104,26 @@ export async function POST(
     throw error;
   }
 
-  // ① user 消息立刻落库（时序不许动，见文件头）
-  await appendUserMessage(conversation.id, question);
+  // ① user 消息立刻落库 —— 从 W21 起这一步同时是**配额占用**：
+  //    检查 + 插入在同一个事务里原子完成（见 quota.ts），超限直接 429，
+  //    user 消息不落库，不产生"只问未答"的半截会话。
+  try {
+    await consumeMonthlyQuestion({ orgId, conversationId: conversation.id, content: question });
+  } catch (error) {
+    if (error instanceof QuotaExceeded) {
+      log.warn('agent.quota.exceeded', {
+        orgId: orgId.slice(0, 8),
+        convId: conversation.id.slice(0, 8),
+        used: error.used,
+        limit: error.limit,
+      });
+      return Response.json(
+        { error: `本月问答额度已用完（${error.used}/${error.limit}），下月 1 号重置` },
+        { status: 429 },
+      );
+    }
+    throw error;
+  }
   const { messages: history, turn } = await loadContext(conversation.id);
 
   const shortConv = conversation.id.slice(0, 8);

@@ -309,7 +309,10 @@ export function ChatPanel({
           </div>
 
           {error ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+            <p
+              data-testid="chat-error"
+              className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+            >
               生成失败：{error}
             </p>
           ) : null}

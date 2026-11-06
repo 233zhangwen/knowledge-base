@@ -95,13 +95,6 @@ export async function resolveConversation(params: {
  * 必须在生成**之前**写：万一后面崩了，用户回来至少知道自己刚才问了什么。
  * 这是 A2 那条可靠性判据（curl 打接口中途 Ctrl+C，库里必须有 user=1）的实现依据。
  */
-export async function appendUserMessage(conversationId: string, content: string) {
-  return prisma.message.create({
-    data: { conversationId, role: 'user', content },
-    select: { id: true },
-  });
-}
-
 export type LoadedContext = {
   /** 拼进 llm.ts 的历史消息（不含当前这轮的问题） */
   messages: ChatMessage[];
