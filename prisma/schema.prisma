@@ -94,13 +94,21 @@ model Organization {
   name      String
   createdAt DateTime @default(now())
 
+  /**
+   * 月度问答额度（W21）。null = 用环境默认 MONTHLY_ANSWER_QUOTA（默认 500）。
+   *
+   * ⚠️ 只存配额，**不存已用量**。已用量每次从事实现算（本月该组织 user 消息数），
+   * 见 src/lib/quota.ts 的注释 —— 计数字段必然漂移，事实源永远对账。
+   */
+  monthlyAnswerQuota Int?
+
   memberships    Membership[]
   knowledgeBases KnowledgeBase[]
   conversations  Conversation[]
   invites        Invite[]
 
-  // W21 会在这里挂 usageRecords（按月问答次数）。
-  // 现在不建表：配额还没有任何逻辑，建一张空表只会让人以为已经做了。
+  // 已用量不建表不建字段：现算（本月 user 消息数），见 quota.ts。W19 的
+  // usageRecords 预留在 W21 落地时被这个方案取代 —— 计数表必然漂移，事实源永远对账。
 }
 
 /**
